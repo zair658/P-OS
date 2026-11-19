@@ -1,43 +1,117 @@
 package pos.launch;
 
 import pos.base.PosVersion;
+import pos.kernel.Kernel;
+import pos.kernel.KernelReport;
 import pos.phys.PhysicalMemory;
+import pos.proc.Assembler;
+import pos.sched.FcfsScheduler;
+import pos.sched.RoundRobinScheduler;
+import pos.sched.Scheduler;
 
 /**
  * Punto de entrada del sistema.
  *
- * En esta fase solo comprueba que el nucleo arranca y que la memoria fisica
- * responde. La terminal de comandos llega en su fase y la interfaz grafica
- * despues; este arranque no adelanta ninguna de las dos, solo verifica.
+ * Arranca con el autodiagnostico de la memoria fisica y, si todo esta en orden,
+ * ejecuta el escenario de procesos de la fase 2 con varios planificadores para
+ * que la comparacion se vea en la misma pantalla.
  *
  * Uso:
  * <pre>
- *   java -jar p-os.jar             saludo y comprobacion del nucleo
- *   java -jar p-os.jar --version   version y salida
+ *   java -jar p-os.jar                 diagnostico y comparacion de planificadores
+ *   java -jar p-os.jar --traza         ademas imprime la traza completa de Round Robin
+ *   java -jar p-os.jar --version       version y salida
  * </pre>
  */
 public final class Main {
+
+    /** Programa de carga: cinco pasos de un contador guardado en memoria. */
+    private static final String CONTADOR = """
+            SET 0
+            loop: ADD 1
+                  STORE 0
+                  CMP 5
+                  JZ fin
+                  JMP loop
+            fin:  EXIT
+            """;
+
+    /** Programa que solo duerme: se comporta como una tarea que espera entrada. */
+    private static final String ESPERA = """
+            SLEEP 8
+            EXIT
+            """;
 
     private Main() {
         // Clase de arranque: no se instancia.
     }
 
     public static void main(String[] args) {
-        if (args.length > 0 && ("--version".equals(args[0]) || "-v".equals(args[0]))) {
+        if (flag(args, "--version") || flag(args, "-v")) {
             System.out.println(PosVersion.FULL);
             return;
         }
-        if (args.length > 0 && ("--help".equals(args[0]) || "-h".equals(args[0]))) {
-            System.out.println("uso: p-os [--version] [--help]");
-            System.out.println("  sin argumentos  comprueba el nucleo y muestra el estado de la memoria");
+        if (flag(args, "--help") || flag(args, "-h")) {
+            System.out.println("uso: p-os [--traza] [--version] [--help]");
+            System.out.println("  sin argumentos  diagnostico de memoria y comparacion de planificadores");
+            System.out.println("  --traza         anade la traza completa de la ejecucion Round Robin");
             return;
         }
 
         System.out.println(PosVersion.FULL);
         System.out.println();
 
-        // Comprobacion de arranque: si la memoria fisica no responde, el resto
-        // del sistema no tiene sentido.
+        if (!diagnosticoMemoria()) {
+            System.exit(1);
+        }
+
+        System.out.println();
+        System.out.println("programas cargados");
+        System.out.println("  contador-a  " + Assembler.load("contador-a", CONTADOR).size()
+                + " instrucciones");
+        System.out.println("  contador-b  " + Assembler.load("contador-b", CONTADOR).size()
+                + " instrucciones");
+        System.out.println("  espera      " + Assembler.load("espera", ESPERA).size()
+                + " instrucciones (duerme 8 ticks)");
+
+        System.out.println();
+        System.out.println("=== comparacion de planificadores ===");
+        System.out.println("escenario: tres procesos que llegan en el tick 0; dos de calculo y uno que espera");
+
+        KernelReport fcfs = ejecutar(new FcfsScheduler());
+        KernelReport rr4 = ejecutar(new RoundRobinScheduler(4));
+        KernelReport rr1 = ejecutar(new RoundRobinScheduler(1));
+
+        System.out.println();
+        System.out.println("--- FCFS, sin expropiacion ---");
+        imprimeInforme(fcfs);
+
+        System.out.println();
+        System.out.println("--- Round Robin, cuanto 4 ---");
+        imprimeInforme(rr4);
+
+        System.out.println();
+        System.out.println("--- Round Robin, cuanto 1 ---");
+        imprimeInforme(rr1);
+
+        System.out.println();
+        System.out.println("--- resumen ---");
+        comparativa(fcfs, rr4, rr1);
+
+        if (flag(args, "--traza")) {
+            System.out.println();
+            System.out.println("--- traza completa de Round Robin(4) ---");
+            Kernel kernel = construir(new RoundRobinScheduler(4));
+            kernel.run();
+            kernel.trace().lines().forEach(System.out::println);
+        }
+
+        System.out.println();
+        System.out.println("estado: procesos, hilos y planificacion operativos");
+    }
+
+    /** Comprobacion de arranque de la memoria fisica. */
+    private static boolean diagnosticoMemoria() {
         PhysicalMemory memory = new PhysicalMemory(4096);
         memory.allocate(1, 0, 64);
         memory.allocate(2, 128, 64);
@@ -50,13 +124,54 @@ public final class Main {
         var failures = memory.checkInvariants();
         if (failures.isEmpty()) {
             System.out.println("invariantes .......... OK");
-        } else {
-            System.out.println("invariantes .......... FALLO");
-            failures.forEach(f -> System.out.println("  " + f));
-            System.exit(1);
+            return true;
         }
+        System.out.println("invariantes .......... FALLO");
+        failures.forEach(f -> System.out.println("  " + f));
+        return false;
+    }
 
+    private static Kernel construir(Scheduler scheduler) {
+        Kernel kernel = new Kernel(scheduler, 256);
+        kernel.createProcess("contador-a", Assembler.load("contador-a", CONTADOR));
+        kernel.createProcess("contador-b", Assembler.load("contador-b", CONTADOR));
+        kernel.createProcess("espera", Assembler.load("espera", ESPERA));
+        return kernel;
+    }
+
+    private static KernelReport ejecutar(Scheduler scheduler) {
+        return construir(scheduler).run();
+    }
+
+    private static void imprimeInforme(KernelReport report) {
+        report.table().forEach(System.out::println);
         System.out.println();
-        System.out.println("estado: nucleo de memoria operativo, sin terminal ni interfaz todavia");
+        report.summary().forEach(System.out::println);
+    }
+
+    private static void comparativa(KernelReport... reports) {
+        System.out.println(String.format("%-18s %10s %10s %10s %8s",
+                "planificador", "retorno", "espera", "respuesta", "reloj"));
+        System.out.println("-".repeat(60));
+        for (KernelReport report : reports) {
+            System.out.println(String.format("%-18s %10.2f %10.2f %10.2f %8d",
+                    report.scheduler(),
+                    report.averageTurnaround(),
+                    report.averageWait(),
+                    report.averageResponse(),
+                    report.clock()));
+        }
+        System.out.println();
+        System.out.println("lectura: FCFS deja esperando al proceso corto detras de los dos largos;");
+        System.out.println("el turno rotatorio le da CPU antes, a cambio de mas cambios de contexto.");
+    }
+
+    private static boolean flag(String[] args, String name) {
+        for (String arg : args) {
+            if (name.equals(arg)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

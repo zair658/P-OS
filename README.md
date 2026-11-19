@@ -11,7 +11,7 @@ una terminal que es un proceso más del sistema.
 |---|---|---|
 | 0 | Entorno de compilación y esqueleto del proyecto | terminada |
 | 1 | Memoria física por bloques y gestores de huecos | terminada |
-| 2 | Procesos, PCB y máquina de instrucciones | pendiente |
+| 2 | Procesos, hilos, intérprete y planificación FCFS / Round Robin | terminada |
 
 Las fases restantes están descritas en `docs/arquitectura.md`.
 
@@ -37,6 +37,8 @@ java -jar target/p-os-0.1.0-SNAPSHOT.jar
   motivo, el modelo de ejecución y las fases.
 - `docs/fase-01-memoria.md`: qué se implementó en la primera fase, con las
   mediciones de los gestores de huecos.
+- `docs/fase-02-procesos.md`: qué se implementó en la segunda, el modelo de
+  ejecución y la comparación de planificadores.
 
 ## Convenciones
 
