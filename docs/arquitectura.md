@@ -297,11 +297,16 @@ la anomalía de Belady con FIFO.
 El área de intercambio es un fichero del sistema de ficheros del sistema, no del
 anfitrión, salvo que se decida lo contrario al implementarlo.
 
-**Estado:** la fase 3 implementó los tres esquemas con todas las páginas
-cargadas mientras el proceso vive, sin fallo de página ni intercambio. Esta
-sección queda pendiente y **depende de la fase 4**: el área de intercambio es un
-fichero de P-OS, y sin sistema de ficheros no hay dónde ponerla. Cuando entre,
-trae las políticas FIFO, LRU y OPT y la demostración de la anomalía de Belady.
+**Estado:** implementada en la fase 3b, en cuanto la fase 4 dio un sistema de
+ficheros donde poner el área de intercambio. Hay un cuarto esquema,
+`pos.mm.DemandPagedSpace`, con bit de presencia y de suciedad; el área es el
+fichero `/intercambio`, con cabecera propia y mapa de ranuras; y las tres
+políticas comparten una vista de solo lectura de la tabla, así que la que elige
+víctima no guarda estado. La demostración (`--swap`) reproduce la anomalía de
+Belady y comprueba que las páginas sucias vuelven con su contenido. Lo que la
+sección describe y **no** está: paginación bajo segmentación y permisos por
+página, que van con los cerrojos de la fase 5. El detalle, en
+`docs/fase-03b-intercambio.md`.
 
 ### 8.5 Invariantes de memoria
 

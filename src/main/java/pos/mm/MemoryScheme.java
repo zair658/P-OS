@@ -1,5 +1,7 @@
 package pos.mm;
 
+import java.util.List;
+
 import pos.alloc.SlotManager;
 import pos.phys.PhysicalMemory;
 
@@ -16,7 +18,8 @@ import pos.phys.PhysicalMemory;
  * deciden por tipo.
  */
 public sealed interface MemoryScheme
-        permits MemoryScheme.Contiguous, MemoryScheme.Paged, MemoryScheme.Segmented {
+        permits MemoryScheme.Contiguous, MemoryScheme.Paged, MemoryScheme.Segmented,
+                MemoryScheme.DemandPaged {
 
     /** Nombre corto para tablas y trazas. */
     String name();
@@ -70,6 +73,56 @@ public sealed interface MemoryScheme
         public AddressSpace attach(PhysicalMemory memory, SlotManager slots, int processId,
                 String processName, int logicalUnits) {
             return PagedSpace.create(memory, slots, processId, processName, logicalUnits, pageSize);
+        }
+    }
+
+    /**
+     * Paginacion por demanda: menos marcos que paginas y area de intercambio.
+     *
+     * El espacio arranca vacio y las paginas entran al tocarlas. Cuando no cabe
+     * una mas, la politica decide cual sale y, si estaba sucia, se guarda en el
+     * area de intercambio.
+     *
+     * @param pageSize unidades por pagina; debe ser positivo
+     * @param frames   marcos que el proceso puede usar a la vez
+     * @param policy   politica de reemplazo
+     * @param swap     area de intercambio, que vive en el sistema de ficheros
+     * @param trace    direcciones que el proceso va a pedir, en orden; OPT la
+     *                 necesita, FIFO y LRU la ignoran
+     */
+    record DemandPaged(int pageSize, int frames, PagePolicy policy, SwapArea swap,
+            List<Integer> trace) implements MemoryScheme {
+
+        public DemandPaged {
+            if (pageSize <= 0) {
+                throw new IllegalArgumentException("el tamano de pagina debe ser positivo: " + pageSize);
+            }
+            if (frames <= 0) {
+                throw new IllegalArgumentException("hacen falta marcos: " + frames);
+            }
+            if (policy == null) {
+                throw new IllegalArgumentException("la paginacion por demanda necesita una politica");
+            }
+            if (swap == null) {
+                throw new IllegalArgumentException("la paginacion por demanda necesita area de intercambio");
+            }
+            if (policy == PagePolicy.OPT && (trace == null || trace.isEmpty())) {
+                throw new IllegalArgumentException("OPT necesita la traza futura del proceso");
+            }
+            trace = trace == null ? null : List.copyOf(trace);
+        }
+
+        @Override
+        public String name() {
+            return "demanda/" + pageSize + "/" + policy.label();
+        }
+
+        @Override
+        public AddressSpace attach(PhysicalMemory memory, SlotManager slots, int processId,
+                String processName, int logicalUnits) {
+            int[] future = trace == null ? null : trace.stream().mapToInt(Integer::intValue).toArray();
+            return DemandPagedSpace.create(memory, slots, processId, processName, logicalUnits,
+                    pageSize, frames, policy, swap, future);
         }
     }
 

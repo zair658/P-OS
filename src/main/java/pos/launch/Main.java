@@ -22,6 +22,7 @@ import pos.sched.Scheduler;
  *   java -jar p-os.jar                 diagnostico y comparacion de planificadores
  *   java -jar p-os.jar --traza         ademas imprime la traza completa de Round Robin
  *   java -jar p-os.jar --memoria       demostracion de los tres esquemas de memoria
+ *   java -jar p-os.jar --swap          paginas por demanda, intercambio y politicas
  *   java -jar p-os.jar --version       version y salida
  * </pre>
  */
@@ -54,10 +55,11 @@ public final class Main {
             return;
         }
         if (flag(args, "--help") || flag(args, "-h")) {
-            System.out.println("uso: p-os [--traza] [--memoria] [--disco] [--version] [--help]");
+            System.out.println("uso: p-os [--traza] [--memoria] [--swap] [--disco] [--version] [--help]");
             System.out.println("  sin argumentos  diagnostico de memoria y comparacion de planificadores");
             System.out.println("  --traza         anade la traza completa de la ejecucion Round Robin");
             System.out.println("  --memoria       demostracion de los tres esquemas de memoria");
+            System.out.println("  --swap          paginas por demanda, area de intercambio y politicas");
             System.out.println("  --disco         demostracion del sistema de ficheros y los tres metodos");
             return;
         }
@@ -67,6 +69,11 @@ public final class Main {
 
         if (flag(args, "--memoria")) {
             MemoryDemo.run();
+            return;
+        }
+
+        if (flag(args, "--swap")) {
+            SwapDemo.run();
             return;
         }
 

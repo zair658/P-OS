@@ -225,11 +225,15 @@ Total del proyecto: **103 pruebas en verde**.
 
 - **No hay memoria de intercambio (swap).** El sistema entero cabe en memoria
   física. El apartado 8.4 de `docs/arquitectura.md` describe la paginación por
-  demanda con FIFO, LRU y OPT, y su cota con la anomalía de Belady; eso **no está
-  implementado aquí** y depende de la fase 4, porque el área de intercambio es un
-  fichero de P-OS y todavía no hay sistema de ficheros donde ponerla.
+  demanda con FIFO, LRU y OPT, y su cota con la anomalía de Belady; eso no está
+  en esta fase porque el área de intercambio es un fichero de P-OS y todavía no
+  hay sistema de ficheros donde ponerla. **Cerrado en la fase 3b**
+  (`docs/fase-03b-intercambio.md`), en cuanto la fase 4 dio ese sistema de
+  ficheros.
 - **No hay reemplazo de páginas.** Todas las páginas de un proceso están
-  cargadas mientras el proceso vive. Sin swap no hay nada que reemplazar.
+  cargadas mientras el proceso vive. Sin swap no hay nada que reemplazar. La
+  fase 3b añade el cuarto esquema, `pos.mm.DemandPagedSpace`, sin tocar a estos
+  tres.
 - **No hay paginación bajo segmentación.** Sería lo correcto en un sistema real
   (segmentos paginados) y también lo que más código añade. Queda como extensión
   documentada, no como deuda oculta.
@@ -237,8 +241,8 @@ Total del proyecto: **103 pruebas en verde**.
   lectura de escritura. Está en el diseño de la fase 5, junto con los cerrojos,
   porque es ahí donde la memoria de solo lectura tiene algo que proteger.
 
-Estas cuatro las tiene que poder explicar quien defienda el proyecto como
-decisiones, no como olvidos.
+Las dos primeras las cerró la fase 3b. Las cuatro las tiene que poder explicar
+quien defienda el proyecto como decisiones, no como olvidos.
 
 ---
 

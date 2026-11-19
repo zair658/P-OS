@@ -62,12 +62,38 @@ public abstract class AddressSpace {
 
     /** Lee una unidad logica del proceso. */
     public final int load(int address) {
+        noteAccess(address);
         return memory.readUnit(translate(address));
     }
 
     /** Escribe una unidad logica del proceso. */
     public final void store(int address, int value) {
+        noteAccess(address);
         memory.writeUnit(translate(address), value);
+        noteWrite(address);
+    }
+
+    /**
+     * Aviso de que el proceso va a acceder a una direccion logica.
+     *
+     * Se llama antes de traducir, porque la paginacion por demanda necesita
+     * saber que toca ahora antes de decidir a quien expulsa. Solo lo disparan
+     * {@link #load} y {@link #store}: consultar una traduccion para diagnostico
+     * no es un acceso del proceso y no debe mover su traza futura.
+     */
+    protected void noteAccess(int address) {
+        // Por defecto no hay nada que anotar.
+    }
+
+    /**
+     * Aviso de que se ha escrito en una direccion logica.
+     *
+     * Los esquemas con paginas por demanda lo usan para marcar la pagina como
+     * sucia y no escribir a disco una pagina que solo se leyo. En los demas
+     * esquemas no hay nada que anotar.
+     */
+    protected void noteWrite(int address) {
+        // Por defecto no hay nada que recordar.
     }
 
     /**
@@ -131,6 +157,11 @@ public abstract class AddressSpace {
         reserved.add(new FreeSpan(start, units));
         placements.add(choice);
         return start;
+    }
+
+    /** Memoria fisica donde este espacio reserva y traduce. */
+    protected final PhysicalMemory memory() {
+        return memory;
     }
 
     /** Devuelve a memoria fisica todo lo que este espacio tenia reservado. */
