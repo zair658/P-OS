@@ -1,0 +1,40 @@
+# Artefactos de compilacion
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Estado de ejecucion del sistema: la imagen de disco no es codigo.
+# Puede contener datos de prueba y crece con el uso, por eso no se versiona.
+*.img
+*.disk
+*.swap
+
+# Volcados y registros
+*.log
+*.hprof
+hs_err_pid*.log
+replay_pid*.log
+
+# Credenciales y secretos. Nunca deben llegar al repositorio.
+token
+*.token
+*.pem
+*.key
+.env
+.env.*
+
+# Entornos de editor
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+
+# Sistemas operativos anfitriones
+.DS_Store
+Thumbs.db
+desktop.ini
