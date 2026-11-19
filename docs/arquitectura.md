@@ -297,6 +297,12 @@ la anomalía de Belady con FIFO.
 El área de intercambio es un fichero del sistema de ficheros del sistema, no del
 anfitrión, salvo que se decida lo contrario al implementarlo.
 
+**Estado:** la fase 3 implementó los tres esquemas con todas las páginas
+cargadas mientras el proceso vive, sin fallo de página ni intercambio. Esta
+sección queda pendiente y **depende de la fase 4**: el área de intercambio es un
+fichero de P-OS, y sin sistema de ficheros no hay dónde ponerla. Cuando entre,
+trae las políticas FIFO, LRU y OPT y la demostración de la anomalía de Belady.
+
 ### 8.5 Invariantes de memoria
 
 Se comprueban tras cada operación, y su incumplimiento es un fallo del núcleo,

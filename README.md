@@ -12,6 +12,7 @@ una terminal que es un proceso más del sistema.
 | 0 | Entorno de compilación y esqueleto del proyecto | terminada |
 | 1 | Memoria física por bloques y gestores de huecos | terminada |
 | 2 | Procesos, hilos, intérprete y planificación FCFS / Round Robin | terminada |
+| 3 | Memoria virtual: contiguo, paginado y segmentado | terminada |
 
 Las fases restantes están descritas en `docs/arquitectura.md`.
 
@@ -29,7 +30,12 @@ Después:
 mvn test                     # pruebas; imprime las tablas comparativas
 mvn package                  # genera el ejecutable
 java -jar target/p-os-0.1.0-SNAPSHOT.jar
+java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --memoria
 ```
+
+`--memoria` ejecuta la demostración de los tres esquemas de memoria: el mismo
+programa con los tres, la tabla de traducción de cada uno y la prueba de
+fragmentación. El arranque sin argumentos compara los planificadores.
 
 ## Documentación
 
@@ -39,6 +45,8 @@ java -jar target/p-os-0.1.0-SNAPSHOT.jar
   mediciones de los gestores de huecos.
 - `docs/fase-02-procesos.md`: qué se implementó en la segunda, el modelo de
   ejecución y la comparación de planificadores.
+- `docs/fase-03-memoria.md`: qué se implementó en la tercera, los tres esquemas
+  de memoria con sus tablas de traducción y la medición de la fragmentación.
 
 ## Convenciones
 

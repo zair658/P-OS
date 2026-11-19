@@ -31,7 +31,16 @@ class InterpreterTest {
     }
 
     private static Pcb proceso(Program program) {
-        return ProcessFactory.newProcess(1, "prueba", program, 256, 0);
+        // El interprete toca memoria, asi que el proceso necesita un espacio real.
+        return proceso(program, new pos.mm.MemoryScheme.Contiguous());
+    }
+
+    /** El mismo programa con el esquema de memoria que se indique. */
+    private static Pcb proceso(Program program, pos.mm.MemoryScheme scheme) {
+        Pcb pcb = ProcessFactory.newProcess(1, "prueba", program, 256, 0);
+        pcb.attachSpace(scheme.attach(new pos.phys.PhysicalMemory(4096),
+                new pos.alloc.BestFit(), 1, "prueba", 256));
+        return pcb;
     }
 
     private static Tcb hilo(Pcb process) {

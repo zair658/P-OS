@@ -11,6 +11,8 @@ package pos.kernel;
 public enum EventKind {
     BOOT("arranque"),
     PROCESS_CREATE("proceso creado"),
+    MEMORY_ALLOC("memoria asignada"),
+    MEMORY_FREE("memoria liberada"),
     THREAD_CREATE("hilo creado"),
     ADMIT("admitido"),
     SWITCH("cambio de contexto"),

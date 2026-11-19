@@ -8,6 +8,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import pos.base.PosFault;
+import pos.mm.AddressSpace;
+import pos.mm.MemorySetup;
 import pos.proc.ExecutionHost;
 import pos.proc.Interpreter;
 import pos.proc.Pcb;
@@ -39,7 +41,7 @@ import pos.sched.SchedulingDecision;
 public final class Kernel implements ExecutionHost {
 
     private final Scheduler scheduler;
-    private final int memoryUnits;
+    private final MemorySetup memory;
     private final Trace trace;
     private final TurnBaton baton = new TurnBaton();
     private final Interpreter interpreter = new Interpreter();
@@ -53,20 +55,43 @@ public final class Kernel implements ExecutionHost {
     private int nextProcessId = 1;
     private boolean started;
 
+    /** Nucleo con esquema contiguo y memoria sobrada para varios procesos. */
     public Kernel(Scheduler scheduler, int memoryUnits) {
         this(scheduler, memoryUnits, new Trace());
     }
 
     public Kernel(Scheduler scheduler, int memoryUnits, Trace trace) {
+        this(scheduler, defaultMemory(memoryUnits), trace);
+    }
+
+    public Kernel(Scheduler scheduler, MemorySetup memory) {
+        this(scheduler, memory, new Trace());
+    }
+
+    public Kernel(Scheduler scheduler, MemorySetup memory, Trace trace) {
         if (scheduler == null) {
             throw new IllegalArgumentException("el nucleo necesita un planificador");
         }
-        if (memoryUnits <= 0) {
-            throw new IllegalArgumentException("cada proceso necesita memoria");
+        if (memory == null) {
+            throw new IllegalArgumentException("el nucleo necesita memoria");
         }
         this.scheduler = scheduler;
-        this.memoryUnits = memoryUnits;
+        this.memory = memory;
         this.trace = trace;
+    }
+
+    /**
+     * Configuracion por defecto: contiguo y con sitio para ocho procesos.
+     *
+     * Se deja margen a proposito. Un nucleo que solo cupiera un proceso no
+     * demostraria nada sobre planificacion, y la memoria de la maquina virtual
+     * es barata.
+     */
+    private static MemorySetup defaultMemory(int logicalUnits) {
+        if (logicalUnits <= 0) {
+            throw new IllegalArgumentException("cada proceso necesita memoria");
+        }
+        return MemorySetup.contiguous(Math.max(4096, logicalUnits * 8), logicalUnits);
     }
 
     // ------------------------------------------------------------------
@@ -81,12 +106,21 @@ public final class Kernel implements ExecutionHost {
         if (started) {
             throw new IllegalStateException("no se pueden crear procesos con el nucleo en marcha");
         }
-        int id = nextProcessId++;
-        Pcb process = ProcessFactory.newProcess(id, name, program, memoryUnits, arrivalTick);
+        int id = nextProcessId;
+        // La memoria se pide antes de consumir el identificador: si no cabe, el
+        // proceso no llega a existir y no queda un hueco en la numeracion.
+        AddressSpace space = memory.newSpace(id, name);
+        nextProcessId++;
+
+        Pcb process = ProcessFactory.newProcess(id, name, program, space.logicalUnits(), arrivalTick);
+        process.attachSpace(space);
         processes.put(id, process);
         trace.add(clock, EventKind.PROCESS_CREATE, "p" + id,
                 name + " '" + program.name() + "' (" + program.size() + " instrucciones, "
-                        + memoryUnits + " unidades)");
+                        + space.logicalUnits() + " unidades logicas)");
+        trace.add(clock, EventKind.MEMORY_ALLOC, "p" + id,
+                memory.scheme().name() + ": " + space.physicalUnits() + " unidades fisicas en "
+                        + space.reservedSpans().size() + " tramo(s), " + wasteText(space));
         createThread(process, 0, null);
         return process;
     }
@@ -118,7 +152,7 @@ public final class Kernel implements ExecutionHost {
         }
         started = true;
         trace.add(clock, EventKind.BOOT, "nucleo",
-                "planificador " + scheduler.name() + ", " + memoryUnits + " unidades por proceso");
+                "planificador " + scheduler.name() + ", " + memory.describe());
 
         try {
             while (true) {
@@ -183,9 +217,35 @@ public final class Kernel implements ExecutionHost {
                 thread.markFinished(clock);
                 trace.add(clock, EventKind.EXIT, thread.id(),
                         "termina con cpu " + thread.cpuTicks() + " ticks");
-                ProcessFactory.closeIfEmpty(thread.process());
+                if (ProcessFactory.closeIfEmpty(thread.process())) {
+                    releaseMemory(thread.process());
+                }
             }
         }
+    }
+
+    /**
+     * Devuelve a memoria fisica todo lo que ocupaba un proceso terminado.
+     *
+     * Se hace aqui y no al cerrar el sistema porque liberar tarde falsea
+     * cualquier medida de fragmentacion tomada a mitad de ejecucion.
+     */
+    private void releaseMemory(Pcb process) {
+        AddressSpace space = process.space();
+        if (space == null) {
+            return;
+        }
+        int units = space.physicalUnits();
+        space.release();
+        trace.add(clock, EventKind.MEMORY_FREE, "p" + process.id(),
+                "devuelve " + units + " unidades fisicas");
+    }
+
+    private static String wasteText(AddressSpace space) {
+        if (space.wastedUnits() == 0) {
+            return "sin desperdicio";
+        }
+        return "desperdicia " + space.wastedUnits() + " unidades";
     }
 
     private void admitArrivals() {
@@ -310,6 +370,11 @@ public final class Kernel implements ExecutionHost {
 
     public Scheduler scheduler() {
         return scheduler;
+    }
+
+    /** Configuracion de memoria con la que corre este nucleo. */
+    public MemorySetup memory() {
+        return memory;
     }
 
     public Trace trace() {

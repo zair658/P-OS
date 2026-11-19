@@ -3,7 +3,9 @@ package pos.proc;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
+
 import pos.base.PosFault;
+import pos.mm.AddressSpace;
 
 /**
  * Bloque de control de proceso: la fuente de verdad de todo lo que un proceso
@@ -13,20 +15,25 @@ import pos.base.PosFault;
  * el estado de ejecucion de cada hilo (eso es del TCB): el proceso es el
  * contenedor, los hilos son los que corren.
  *
- * El espacio de direcciones es, en esta fase, un vector propio del proceso con
- * acceso comprobado. La fase 3 lo sustituye por el traductor a memoria fisica;
- * hasta entonces la unica garantia que se da es que nadie puede escribir fuera
- * de su propio espacio.
+ * El espacio de direcciones se declara al nacer, pero se asigna despues: un
+ * proceso recien creado sabe cuanto necesita y todavia no tiene nada. Mientras
+ * no tenga espacio no puede tocar memoria, y decirlo con un fallo es mejor que
+ * devolver ceros como si todo fuera bien.
+ *
+ * El proceso habla de direcciones logicas y nada mas. Que detras haya un tramo
+ * contiguo, paginas en marcos sueltos o segmentos repartidos no es asunto suyo:
+ * lo resuelve el traductor, que es el objeto {@link AddressSpace}.
  */
 public final class Pcb {
 
     private final int id;
     private final String name;
     private final Program program;
-    private final byte[] addressSpace;
+    private final int memoryUnits;
     private final List<Tcb> threads;
     private final long arrivalTick;
 
+    private AddressSpace space;
     private State state = State.NEW;
 
     Pcb(int id, String name, Program program, int memoryUnits, long arrivalTick) {
@@ -36,7 +43,7 @@ public final class Pcb {
         this.id = id;
         this.name = name;
         this.program = program;
-        this.addressSpace = new byte[memoryUnits];
+        this.memoryUnits = memoryUnits;
         this.threads = new ArrayList<>();
         this.arrivalTick = arrivalTick;
     }
@@ -57,8 +64,9 @@ public final class Pcb {
         return arrivalTick;
     }
 
+    /** Unidades logicas que el proceso declaro necesitar. */
     public int memoryUnits() {
-        return addressSpace.length;
+        return memoryUnits;
     }
 
     public State state() {
@@ -82,23 +90,62 @@ public final class Pcb {
         return threads.stream().filter(t -> t.state() != State.TERMINATED).count();
     }
 
+    // ------------------------------------------------------------------
+    // Espacio de direcciones
+    // ------------------------------------------------------------------
+
+    /**
+     * Asigna el espacio de direcciones del proceso.
+     *
+     * Solo se asigna una vez: si ya tenia, es un error del nucleo y hay que
+     * decirlo, porque dos espacios para el mismo proceso significan memoria
+     * reservada dos veces y liberada una.
+     */
+    public void attachSpace(AddressSpace space) {
+        if (space == null) {
+            throw new IllegalArgumentException("el espacio de direcciones no puede ser nulo");
+        }
+        if (this.space != null) {
+            throw new IllegalStateException("el proceso '" + name + "' ya tenia espacio de direcciones");
+        }
+        if (space.logicalUnits() != memoryUnits) {
+            throw new IllegalStateException("el proceso '" + name + "' declaro " + memoryUnits
+                    + " unidades logicas y se le asigno un espacio de " + space.logicalUnits());
+        }
+        this.space = space;
+    }
+
+    /** Espacio de direcciones asignado, o {@code null} si aun no tiene. */
+    public AddressSpace space() {
+        return space;
+    }
+
+    /** Indica si el proceso ya puede ejecutar instrucciones que toquen memoria. */
+    public boolean hasMemory() {
+        return space != null;
+    }
+
     /** Lee una unidad del espacio de direcciones del proceso. */
     public int load(int address) {
-        checkAddress(address);
-        return addressSpace[address] & 0xFF;
+        return spaceOrFail().load(address);
     }
 
     /** Escribe una unidad del espacio de direcciones del proceso. */
     public void store(int address, int value) {
-        checkAddress(address);
-        addressSpace[address] = (byte) (value & 0xFF);
+        spaceOrFail().store(address, value);
     }
 
-    private void checkAddress(int address) {
-        if (address < 0 || address >= addressSpace.length) {
-            throw new PosFault("proceso '" + name + "': direccion " + address
-                    + " fuera de su espacio (0.." + (addressSpace.length - 1) + ")");
+    /** Unidades fisicas que ocupa el proceso de verdad. */
+    public int physicalUnits() {
+        return space == null ? 0 : space.physicalUnits();
+    }
+
+    private AddressSpace spaceOrFail() {
+        if (space == null) {
+            throw new PosFault("el proceso '" + name
+                    + "' no tiene memoria asignada y no puede acceder a direccion alguna");
         }
+        return space;
     }
 
     @Override

@@ -3,6 +3,7 @@ package pos.launch;
 import pos.base.PosVersion;
 import pos.kernel.Kernel;
 import pos.kernel.KernelReport;
+import pos.mm.MemorySetup;
 import pos.phys.PhysicalMemory;
 import pos.proc.Assembler;
 import pos.sched.FcfsScheduler;
@@ -20,6 +21,7 @@ import pos.sched.Scheduler;
  * <pre>
  *   java -jar p-os.jar                 diagnostico y comparacion de planificadores
  *   java -jar p-os.jar --traza         ademas imprime la traza completa de Round Robin
+ *   java -jar p-os.jar --memoria       demostracion de los tres esquemas de memoria
  *   java -jar p-os.jar --version       version y salida
  * </pre>
  */
@@ -52,14 +54,20 @@ public final class Main {
             return;
         }
         if (flag(args, "--help") || flag(args, "-h")) {
-            System.out.println("uso: p-os [--traza] [--version] [--help]");
+            System.out.println("uso: p-os [--traza] [--memoria] [--version] [--help]");
             System.out.println("  sin argumentos  diagnostico de memoria y comparacion de planificadores");
             System.out.println("  --traza         anade la traza completa de la ejecucion Round Robin");
+            System.out.println("  --memoria       demostracion de los tres esquemas de memoria");
             return;
         }
 
         System.out.println(PosVersion.FULL);
         System.out.println();
+
+        if (flag(args, "--memoria")) {
+            MemoryDemo.run();
+            return;
+        }
 
         if (!diagnosticoMemoria()) {
             System.exit(1);
@@ -74,6 +82,8 @@ public final class Main {
         System.out.println("  espera      " + Assembler.load("espera", ESPERA).size()
                 + " instrucciones (duerme 8 ticks)");
 
+        System.out.println();
+        System.out.println("memoria del escenario ... " + memorySetup().describe());
         System.out.println();
         System.out.println("=== comparacion de planificadores ===");
         System.out.println("escenario: tres procesos que llegan en el tick 0; dos de calculo y uno que espera");
@@ -107,7 +117,7 @@ public final class Main {
         }
 
         System.out.println();
-        System.out.println("estado: procesos, hilos y planificacion operativos");
+        System.out.println("estado: procesos, hilos, planificacion y memoria virtual operativos");
     }
 
     /** Comprobacion de arranque de la memoria fisica. */
@@ -132,11 +142,22 @@ public final class Main {
     }
 
     private static Kernel construir(Scheduler scheduler) {
-        Kernel kernel = new Kernel(scheduler, 256);
+        Kernel kernel = new Kernel(scheduler, memorySetup());
         kernel.createProcess("contador-a", Assembler.load("contador-a", CONTADOR));
         kernel.createProcess("contador-b", Assembler.load("contador-b", CONTADOR));
         kernel.createProcess("espera", Assembler.load("espera", ESPERA));
         return kernel;
+    }
+
+    /**
+     * Memoria del escenario de planificacion: paginas de 16 unidades.
+     *
+     * Se usa paginacion porque el escenario no debe depender de que queden
+     * tramos contiguos grandes: cada proceso se coloca en marcos sueltos y
+     * anadir uno mas nunca obliga a recolocar los anteriores.
+     */
+    private static MemorySetup memorySetup() {
+        return MemorySetup.paged(4096, 256, 16);
     }
 
     private static KernelReport ejecutar(Scheduler scheduler) {
