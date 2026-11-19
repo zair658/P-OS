@@ -31,11 +31,15 @@ mvn test                     # pruebas; imprime las tablas comparativas
 mvn package                  # genera el ejecutable
 java -jar target/p-os-0.1.0-SNAPSHOT.jar
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --memoria
+java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --disco
 ```
 
 `--memoria` ejecuta la demostración de los tres esquemas de memoria: el mismo
 programa con los tres, la tabla de traducción de cada uno y la prueba de
-fragmentación. El arranque sin argumentos compara los planificadores.
+fragmentación. `--disco` hace lo mismo con el sistema de ficheros: los tres
+métodos de asignación sobre el mismo contenido, el mismo hueco pedido por los
+tres y una imagen estropeada que se niega a montar. El arranque sin argumentos
+compara los planificadores.
 
 ## Documentación
 
@@ -47,6 +51,8 @@ fragmentación. El arranque sin argumentos compara los planificadores.
   ejecución y la comparación de planificadores.
 - `docs/fase-03-memoria.md`: qué se implementó en la tercera, los tres esquemas
   de memoria con sus tablas de traducción y la medición de la fragmentación.
+- `docs/fase-04-disco.md`: qué se implementó en la cuarta, la imagen por bloques,
+  los tres métodos de asignación y la verificación al montar.
 
 ## Convenciones
 

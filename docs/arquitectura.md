@@ -336,17 +336,33 @@ Un fichero único, con esta estructura:
 Conmutables en caliente, con la misma carga para poder comparar:
 
 - **Contigua**: primer bloque y longitud. Acceso directo, sufre fragmentación
-  externa, crece mal.
+  externa, crece mal. La colocación usa `pos.alloc.SlotManager` con BestFit: el
+  mismo gestor de huecos que reparte memoria reparte bloques.
 - **Enlazada**: cada bloque apunta al siguiente. Sin fragmentación externa,
-  acceso directo malo, propenso a cadenas largas.
-- **Indexada** (por defecto): bloque de índices por fichero. Acceso directo,
-  sin fragmentación externa, coste de un bloque de índices.
+  acceso directo malo, propenso a cadenas largas, cuatro bytes de puntero por
+  bloque.
+- **Indexada**: un bloque de índices por fichero, de un solo nivel. Acceso
+  directo en dos lecturas, sin fragmentación externa, coste de un bloque de
+  índices. Un fichero que no cabe en un índice no entra por esta vía.
+
+El FCB guarda su asignación, no una lista de bloques físicos. Por eso el método
+se puede cambiar en caliente, y por eso el cambio no convierte lo ya escrito:
+el fichero antiguo sigue leyéndose con el método con el que se creó.
 
 La comparación entre los tres reutiliza los mismos conceptos de huecos que la
 memoria. Esa continuidad conceptual es deliberada y es un argumento fuerte en la
 defensa.
 
-### 9.3 Integridad
+### 9.3 Verificación
+
+`FsCheck` compara el mapa con los FCB en los dos sentidos: un bloque ocupado que
+ningún FCB reclama es una fuga; un bloque que un fichero reclama y el mapa da
+por libre es una corrupción, y escribir ahí perdería datos. También comprueba el
+superbloque contra el mapa, que los bloques de metadatos no estén libres, que
+ningún FCB apunte fuera del rango de datos, que el tamaño declarado cuadre con
+los bloques asignados y que todo FCB tenga su entrada de directorio.
+
+### 9.4 Integridad
 
 Al montar la imagen se verifica: superbloque coherente, mapa de libres
 consistente con la tabla de FCB, y ninguna cadena o índice apuntando fuera de
