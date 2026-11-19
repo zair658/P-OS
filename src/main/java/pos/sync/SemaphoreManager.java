@@ -147,6 +147,11 @@ public final class SemaphoreManager {
         return slots.size();
     }
 
+    /** Nombres de los semaforos, en orden de creacion. */
+    public List<String> names() {
+        return List.copyOf(slots.keySet());
+    }
+
     /** Estado de la tabla, una linea por semaforo. Para la demostracion. */
     public List<String> describe() {
         List<String> lines = new ArrayList<>();

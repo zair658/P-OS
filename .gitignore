@@ -38,3 +38,6 @@ token
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Capturas generadas por --captura: se regeneran, no se versionan.
+capturas/

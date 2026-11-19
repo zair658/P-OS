@@ -1,0 +1,508 @@
+package pos.ui.swing;
+
+import java.awt.BorderLayout;
+import java.awt.CardLayout;
+import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.List;
+
+import javax.swing.JComponent;
+import javax.swing.JFrame;
+import javax.swing.JPanel;
+import javax.swing.WindowConstants;
+
+import pos.ui.CallsTable;
+import pos.ui.MemoryTable;
+import pos.ui.ProcessTable;
+import pos.ui.SchedulingTable;
+import pos.ui.Snapshot;
+import pos.ui.SyncTable;
+
+/**
+ * La ventana del simulador.
+ *
+ * Seis vistas de la misma foto, una por pregunta. El resumen contesta "como va
+ * esto"; procesos, "que hay vivo"; reparto, "quien usa la CPU y quien espera";
+ * memoria, "donde esta cada cosa"; sistema, "a que se dedica el nucleo"; traza,
+ * "que paso y en que orden".
+ *
+ * La ventana no ejecuta nada ni lee el nucleo: recibe fotos del feed y las
+ * reparte. Eso la hace segura -- nunca ve un estado a medias -- y la hace
+ * barata de refrescar: si la foto es la misma, no se toca nada.
+ */
+public final class Shell {
+
+    /** Nombres de las pestanas, en orden. */
+    private static final String[] TABS = {
+            "Resumen", "Procesos", "Reparto", "Memoria", "Sistema", "Traza"
+    };
+
+    /** Modelos de tabla, que viven fuera de Swing. */
+    private final ProcessTable processModel = new ProcessTable();
+    private final SchedulingTable schedulingModel = new SchedulingTable();
+    private final MemoryTable memoryModel = new MemoryTable();
+    private final CallsTable callsModel = new CallsTable();
+    private final SyncTable syncModel = new SyncTable();
+
+    /** Vistas. */
+    private final TablePanel processes;
+    private final TablePanel threadsProc;
+    private final TablePanel threadsSched;
+    private final TablePanel memory;
+    private final TablePanel calls;
+    private final TablePanel sync;
+    private final TablePanel queue;
+    private final MemoryMapPanel mapSummary = new MemoryMapPanel();
+    private final MemoryMapPanel mapMemory = new MemoryMapPanel();
+    private final CpuBarsPanel cpu = new CpuBarsPanel();
+    private final HistoryPanel history = new HistoryPanel();
+    private final TracePanel trace = new TracePanel();
+
+    private final CardLayout cards = new CardLayout();
+    private final JPanel pages = new JPanel(cards);
+    private final TabBar tabs = new TabBar(TABS);
+    private final TopBar top = new TopBar();
+    private final StatusBar status = new StatusBar();
+
+    /** Ultima foto mostrada. */
+    private Snapshot shown;
+
+    /** Raiz del contenido: todo lo que se ve cuelga de aqui. */
+    private final JPanel root = new JPanel(new BorderLayout());
+
+    /**
+     * Construye el contenido de la ventana, sin ventana.
+     *
+     * La separacion es lo que permite capturar la interfaz: en un contenedor sin
+     * pantalla no se puede crear un JFrame, pero si se puede construir el arbol
+     * de componentes, darle un tamano y pintarlo sobre una imagen. Por eso aqui
+     * no hay nada que dependa de tener una ventana abierta.
+     */
+    public Shell() {
+
+        processes = new TablePanel(processModel, new int[] { 46, 116, 96, 52, 52, 60, 60, 78 },
+                new int[] { 0, 3, 4, 5, 6 }, 2);
+        threadsProc = new TablePanel(schedulingModel,
+                new int[] { 116, 116, 96, 46, 52, 62, 66, 150 },
+                new int[] { 3, 4, 5, 6 }, 2);
+        threadsSched = new TablePanel(schedulingModel,
+                new int[] { 116, 116, 96, 46, 52, 62, 66, 150 },
+                new int[] { 3, 4, 5, 6 }, 2);
+        memory = new TablePanel(memoryModel, new int[] { 70, 70, 74, 130 },
+                new int[] { 0, 1, 2 }, -1);
+        calls = new TablePanel(callsModel, new int[] { 66, 190, 66 },
+                new int[] { 0, 2 }, -1);
+        sync = new TablePanel(syncModel, new int[] { 84, 116, 210, 60 },
+                new int[] { 3 }, -1);
+        queue = new TablePanel("Cola de listos", schedulingModel.queueHeaders(),
+                new int[] { 60, 132, 132 }, new int[] { 0 }, -1);
+
+        pages.setBackground(Theme.BG);
+        pages.add(pageSummary(), TABS[0]);
+        pages.add(pageProcesses(), TABS[1]);
+        pages.add(pageScheduling(), TABS[2]);
+        pages.add(pageMemory(), TABS[3]);
+        pages.add(pageSystem(), TABS[4]);
+        pages.add(pageTrace(), TABS[5]);
+
+        root.setBackground(Theme.BG);
+        JPanel chrome = new JPanel(new BorderLayout());
+        chrome.setBackground(Theme.BG);
+        chrome.add(top, BorderLayout.NORTH);
+        chrome.add(tabs, BorderLayout.CENTER);
+        root.add(chrome, BorderLayout.NORTH);
+        root.add(pages, BorderLayout.CENTER);
+        root.add(status, BorderLayout.SOUTH);
+    }
+
+    /** El contenido, para colgarlo de una ventana o pintarlo en una imagen. */
+    public JComponent rootComponent() {
+        return root;
+    }
+
+    /**
+     * La ventana, ya montada sobre el contenido.
+     *
+     * Se crea aparte porque crear un JFrame exige pantalla: quien no la tenga
+     * -- una captura, un test -- usa {@link #rootComponent()} y se ahorra el
+     * problema de que AWT se niegue a arrancar.
+     */
+    public JFrame frame() {
+        JFrame frame = new JFrame("P-OS · simulador de sistema operativo");
+        frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+        frame.setContentPane(root);
+        frame.setMinimumSize(new Dimension(980, 640));
+        frame.setSize(1280, 820);
+        frame.setLocationRelativeTo(null);
+        return frame;
+    }
+
+    /** Pestana del resumen: las tres vistas que se miran de reojo. */
+    private JPanel pageSummary() {
+        JPanel page = new JPanel(new BorderLayout());
+        page.setBackground(Theme.BG);
+        // Arriba el estado de ahora (CPU y mapa), abajo la evolucion. El mapa se
+        // queda con su alto justo -- es una cinta de tres filas -- y el grafico
+        // se lleva lo que sobra, que es donde de verdad hay algo que mirar.
+        JPanel north = new JPanel(new BorderLayout());
+        north.setOpaque(false);
+        north.add(cpu, BorderLayout.NORTH);
+        north.add(mapSummary, BorderLayout.CENTER);
+        page.add(north, BorderLayout.NORTH);
+        page.add(history, BorderLayout.CENTER);
+        return page;
+    }
+
+    /** Pestana de procesos: quien existe y quien ejecuta. */
+    private JPanel pageProcesses() {
+        JPanel page = new JPanel(new BorderLayout());
+        page.setBackground(Theme.BG);
+        page.add(processes, BorderLayout.NORTH);
+        page.add(threadsProc, BorderLayout.CENTER);
+        return page;
+    }
+
+    /** Pestana del reparto: los hilos con sus tiempos y la cola en orden. */
+    private JPanel pageScheduling() {
+        JPanel page = new JPanel(new BorderLayout());
+        page.setBackground(Theme.BG);
+        page.add(threadsSched, BorderLayout.CENTER);
+        page.add(queue, BorderLayout.SOUTH);
+        return page;
+    }
+
+    /** Pestana de memoria: el mapa y sus tramos. */
+    private JPanel pageMemory() {
+        JPanel page = new JPanel(new BorderLayout());
+        page.setBackground(Theme.BG);
+        page.add(mapMemory, BorderLayout.NORTH);
+        page.add(memory, BorderLayout.CENTER);
+        return page;
+    }
+
+    /** Pestana del sistema: lo que se le pide al nucleo y lo que espera. */
+    private JPanel pageSystem() {
+        JPanel page = new JPanel(new BorderLayout());
+        page.setBackground(Theme.BG);
+        page.add(calls, BorderLayout.NORTH);
+        page.add(sync, BorderLayout.CENTER);
+        return page;
+    }
+
+    /** Pestana de la traza. */
+    private JPanel pageTrace() {
+        JPanel page = new JPanel(new BorderLayout());
+        page.setBackground(Theme.BG);
+        page.add(trace, BorderLayout.CENTER);
+        return page;
+    }
+
+    /**
+     * Muestra una foto en todas las vistas.
+     *
+     * Se puede llamar desde cualquier hilo: el que llama es el temporizador de
+     * Swing, que ya corre en el hilo de la interfaz.
+     */
+    public void show(Snapshot shot) {
+        shown = shot;
+        if (shot == null) {
+            clear();
+            return;
+        }
+        processes.refresh(shot);
+        threadsProc.refresh(shot);
+        threadsSched.refresh(shot);
+        memory.refresh(shot);
+        calls.refresh(shot);
+        sync.refresh(shot);
+        queue.update(schedulingModel.queueRows(shot), "en orden de salida");
+        mapSummary.update(shot);
+        mapMemory.update(shot);
+        cpu.update(shot);
+        history.update(histories, shot);
+
+        fit(processes, shot.processes().size());
+        fit(threadsProc, shot.threads().size());
+        fit(threadsSched, shot.threads().size());
+        fit(memory, memoryModel.rows(shot).size());
+        fit(calls, shot.calls().rows().size());
+
+        String traceText = String.join("\n", shot.trace());
+        String traceSummary = shot.trace().size() + " lineas"
+                + (shot.traceTruncated() ? "  ·  recortada" : "");
+        trace.setLines(traceText, traceSummary, true);
+
+        top.update(shot);
+        status.update(shot);
+        pages.revalidate();
+    }
+
+    /** Serie temporal que acompana a la foto. */
+    private List<long[]> histories = List.of();
+
+    /** Fija la serie temporal que dibuja el panel de evolucion. */
+    public void setHistory(List<long[]> samples) {
+        this.histories = samples == null ? List.of() : samples;
+    }
+
+    /** Deja todas las vistas vacias. */
+    public void clear() {
+        shown = null;
+        processes.clear();
+        threadsProc.clear();
+        threadsSched.clear();
+        memory.clear();
+        calls.clear();
+        sync.clear();
+        queue.clear();
+        mapSummary.clear();
+        mapMemory.clear();
+        cpu.clear();
+        history.clear();
+        trace.clear();
+        top.clear();
+        status.clear();
+    }
+
+    /** La ultima foto mostrada, o {@code null} si no se ha mostrado ninguna. */
+    public Snapshot shown() {
+        return shown;
+    }
+
+    /** Selecciona una pestana por su nombre, si existe. */
+    public void selectTab(String name) {
+        for (String tab : TABS) {
+            if (tab.equals(name)) {
+                tabs.select(tab);
+                cards.show(pages, tab);
+                return;
+            }
+        }
+    }
+
+    /** Nombres de las pestanas. */
+    public static List<String> tabNames() {
+        return List.of(TABS);
+    }
+
+    /**
+     * Ajusta el alto de una tabla al numero de filas que lleva.
+     *
+     * Sin esto, cada tabla se queda con el alto de relleno de Swing y la ventana
+     * aparece llena de huecos vacios donde deberia haber filas y scroll. Se
+     * calcula: banda de titulo, cabecera, filas y el canal de la barra.
+     */
+    private void fit(TablePanel panel, int rows) {
+        int height = SectionHeader.HEIGHT + Theme.HEADER_HEIGHT + Math.max(1, rows) * Theme.ROW_HEIGHT + 10;
+        Dimension size = new Dimension(10, Math.min(height, 420));
+        if (!size.equals(panel.getPreferredSize())) {
+            panel.setPreferredSize(size);
+        }
+    }
+
+    /** Tira de pestanas: texto, subrayado en la activa y raton. */
+    private final class TabBar extends JPanel {
+
+        private final String[] names;
+        private final int[] spans;
+        private String active;
+        private int hover = -1;
+
+        TabBar(String[] names) {
+            this.names = names;
+            this.spans = new int[names.length];
+            this.active = names[0];
+            setOpaque(true);
+            setBackground(Theme.BG);
+            setPreferredSize(new Dimension(10, 42));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    int index = indexAt(e.getX());
+                    if (index >= 0) {
+                        select(names[index]);
+                    }
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    hover = -1;
+                    repaint();
+                }
+            });
+            addMouseMotionListener(new MouseAdapter() {
+                @Override
+                public void mouseMoved(MouseEvent e) {
+                    int index = indexAt(e.getX());
+                    if (index != hover) {
+                        hover = index;
+                        repaint();
+                    }
+                }
+            });
+        }
+
+        void select(String name) {
+            active = name;
+            cards.show(pages, name);
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            Theme.smooth(g2);
+            int x = 18;
+            int baseline = getHeight() - 14;
+            for (int index = 0; index < names.length; index++) {
+                String name = names[index];
+                g2.setFont(Theme.sansBold(12.5f));
+                int width = g2.getFontMetrics().stringWidth(name);
+                boolean isActive = name.equals(active);
+                boolean isHover = index == hover;
+                g2.setColor(isActive ? Theme.TEXT : isHover ? Theme.MUTED : Theme.DIM);
+                g2.drawString(name, x, baseline);
+                if (isActive) {
+                    g2.setColor(Theme.ACCENT);
+                    g2.fillRoundRect(x, getHeight() - 6, width, 2, 2, 2);
+                }
+                x += width + 26;
+            }
+            g2.setColor(Theme.BORDER);
+            g2.drawLine(0, getHeight() - 1, getWidth(), getHeight() - 1);
+            g2.dispose();
+        }
+
+        private int indexAt(int mouseX) {
+            int x = 18;
+            Graphics2D g2 = (Graphics2D) getGraphics();
+            if (g2 == null) {
+                return -1;
+            }
+            Theme.smooth(g2);
+            g2.setFont(Theme.sansBold(12.5f));
+            for (int index = 0; index < names.length; index++) {
+                int width = g2.getFontMetrics().stringWidth(names[index]);
+                if (mouseX >= x - 6 && mouseX <= x + width + 6) {
+                    g2.dispose();
+                    return index;
+                }
+                x += width + 26;
+            }
+            g2.dispose();
+            return -1;
+        }
+
+        /** Anchos de las pestanas, calculados una vez con la fuente ya cargada. */
+        int[] spans() {
+            return spans;
+        }
+    }
+
+    /** Barra superior: la marca a la izquierda y el estado del reloj a la derecha. */
+    private final class TopBar extends JPanel {
+
+        TopBar() {
+            setOpaque(true);
+            setBackground(Theme.BG);
+            setPreferredSize(new Dimension(10, 46));
+        }
+
+        void update(Snapshot shot) {
+            repaint();
+        }
+
+        void clear() {
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            Theme.smooth(g2);
+            int h = getHeight();
+
+            g2.setFont(Theme.sansBold(17f));
+            g2.setColor(Theme.TEXT);
+            g2.drawString("P-OS", 18, h - 16);
+
+            g2.setFont(Theme.sans(11f));
+            g2.setColor(Theme.MUTED);
+            g2.drawString("simulador de sistema operativo", 74, h - 16);
+
+            Snapshot shot = shown;
+            String right = shot == null
+                    ? "esperando el primer turno"
+                    : "reloj " + shot.clock() + "  ·  " + shot.phase()
+                            + "  ·  " + shot.scheduler();
+            g2.setFont(Theme.mono(10.5f));
+            g2.setColor(shot == null ? Theme.DIM : Theme.MUTED);
+            int width = g2.getFontMetrics().stringWidth(right);
+            g2.drawString(right, getWidth() - width - 18, h - 16);
+
+            g2.setColor(Theme.BORDER);
+            g2.drawLine(0, h - 1, getWidth(), h - 1);
+            g2.dispose();
+        }
+    }
+
+    /** Pie: que se esta viendo y cuanto hay. */
+    private final class StatusBar extends JPanel {
+
+        private String left = "esperando datos";
+        private String right = "P-OS 0.8 · fase 8 · interfaz";
+
+        StatusBar() {
+            setOpaque(true);
+            setBackground(Theme.PANEL_ALT);
+            setPreferredSize(new Dimension(10, 26));
+        }
+
+        void update(Snapshot shot) {
+            int live = shot.liveProcesses();
+            int total = shot.processes().size();
+            left = total + " procesos (" + live + " vivos)  ·  " + shot.threads().size() + " hilos  ·  "
+                    + shot.memory().used() + "/" + shot.memory().size() + " unidades  ·  "
+                    + shot.ready().size() + " en cola  ·  " + shot.calls().total() + " llamadas";
+            repaint();
+        }
+
+        void clear() {
+            left = "esperando datos";
+            repaint();
+        }
+
+        /** Texto de la derecha, para marcar el modo captura o la version. */
+        void right(String text) {
+            right = text;
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            Theme.smooth(g2);
+            int h = getHeight();
+            g2.setFont(Theme.mono(10f));
+            g2.setColor(Theme.MUTED);
+            g2.drawString(left, 18, h - 9);
+            FontMetrics fm = g2.getFontMetrics();
+            g2.setColor(Theme.DIM);
+            g2.drawString(right, getWidth() - fm.stringWidth(right) - 18, h - 9);
+            g2.setColor(Theme.BORDER);
+            g2.drawLine(0, 0, getWidth(), 0);
+            g2.dispose();
+        }
+    }
+}

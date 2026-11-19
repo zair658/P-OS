@@ -78,6 +78,9 @@ public final class Kernel implements ExecutionHost {
     private boolean started;
     private boolean keepFinalMemory;
 
+    /** Quien mira el sistema mientras corre, o {@code null} si a nadie le importa. */
+    private KernelObserver observer;
+
     /** Nucleo con esquema contiguo y memoria sobrada para varios procesos. */
     public Kernel(Scheduler scheduler, int memoryUnits) {
         this(scheduler, memoryUnits, new Trace());
@@ -272,6 +275,8 @@ public final class Kernel implements ExecutionHost {
         started = true;
         trace.add(clock, EventKind.BOOT, "nucleo",
                 "planificador " + scheduler.name() + ", " + memory.describe());
+        // Primera foto: el sistema recien arrancado, antes de ejecutar nada.
+        notifyTurn();
 
         try {
             while (true) {
@@ -295,6 +300,8 @@ public final class Kernel implements ExecutionHost {
         }
 
         trace.add(clock, EventKind.DONE, "nucleo", "reloj final " + clock + " ticks");
+        // Ultima foto: el estado final, con la memoria de los procesos ya liberada.
+        notifyTurn();
         return report();
     }
 
@@ -360,6 +367,41 @@ public final class Kernel implements ExecutionHost {
                     releaseMemory(process);
                 }
             }
+        }
+        // Se avisa con el turno ya cerrado: no hay nadie dentro del interprete y
+        // las colas estan estables. Es el unico momento en que se puede leer el
+        // sistema entero sin cerrojos ni estados a medias.
+        notifyTurn();
+    }
+
+    /**
+     * Apunta a alguien que quiera ver el sistema mientras corre.
+     *
+     * Solo puede haber uno, y se puede quitar pasando {@code null}. El aviso
+     * llega al cerrar cada turno y tambien en el arranque y en el cierre, para
+     * que quien mire tenga siempre una foto inicial y una final.
+     */
+    public void setObserver(KernelObserver observer) {
+        this.observer = observer;
+    }
+
+    /**
+     * Da el aviso de turno cerrado.
+     *
+     * Si el observador revienta se anota una vez y se desconecta: una interfaz
+     * rota no puede tumbar el sistema que esta mirando, y repetir el aviso solo
+     * llenaria la traza de miles de lineas iguales.
+     */
+    private void notifyTurn() {
+        if (observer == null) {
+            return;
+        }
+        try {
+            observer.afterTurn(this);
+        } catch (RuntimeException failure) {
+            trace.add(clock, EventKind.FAULT, "observador",
+                    "la interfaz fallo y se desconecta: " + failure.getMessage());
+            observer = null;
         }
     }
 
@@ -759,6 +801,22 @@ public final class Kernel implements ExecutionHost {
 
     public List<Tcb> threads() {
         return List.copyOf(allThreads);
+    }
+
+    /**
+     * La cola de listos, en el orden en que el planificador los vera.
+     *
+     * Es informacion de dentro del sistema, no un detalle de la demostracion:
+     * sin ella no se puede ensenar por que Round Robin elige a quien elige, y
+     * una tabla de planificacion sin el orden de la cola es media tabla.
+     */
+    public List<Tcb> readyQueue() {
+        return List.copyOf(ready);
+    }
+
+    /** Los hilos bloqueados, en el orden en que se bloquearon. */
+    public List<Tcb> blockedQueue() {
+        return List.copyOf(blocked);
     }
 
     /** Las llamadas al sistema, vistas desde dentro del nucleo. */

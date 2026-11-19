@@ -143,6 +143,11 @@ public final class ConditionManager {
         return slots.size();
     }
 
+    /** Nombres de las condiciones, en orden de creacion. */
+    public List<String> names() {
+        return List.copyOf(slots.keySet());
+    }
+
     /** Estado de la tabla, una linea por condicion. Para la demostracion. */
     public List<String> describe() {
         List<String> lines = new ArrayList<>();

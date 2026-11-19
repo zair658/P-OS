@@ -296,6 +296,17 @@ public final class LockManager {
         return null;
     }
 
+    /**
+     * Nombres de los cerrojos, en orden de creacion.
+     *
+     * Existe para que una vista pueda componer su propia tabla con los datos
+     * sueltos ({@link #ownerOf}, {@link #waitingCount}) en vez de partir el
+     * texto de {@link #describe}. El texto es para leer; esto es para medir.
+     */
+    public List<String> names() {
+        return List.copyOf(slots.keySet());
+    }
+
     /** Estado de la tabla, una linea por cerrojo. Para la demostracion. */
     public List<String> describe() {
         List<String> lines = new ArrayList<>();

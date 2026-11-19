@@ -1,5 +1,7 @@
 package pos.launch;
 
+import java.io.IOException;
+
 import pos.base.PosVersion;
 import pos.kernel.Kernel;
 import pos.kernel.KernelReport;
@@ -59,7 +61,7 @@ public final class Main {
             return;
         }
         if (flag(args, "--help") || flag(args, "-h")) {
-            System.out.println("uso: p-os [--traza] [--memoria] [--swap] [--disco] [--concurrencia] [--sincronizacion] [--medicion [--csv]] [--shell] [--version] [--help]");
+            System.out.println("uso: p-os [--ui] [--captura [carpeta]] [--traza] [--memoria] [--swap] [--disco] [--concurrencia] [--sincronizacion] [--medicion [--csv]] [--shell] [--version] [--help]");
             System.out.println("  sin argumentos  diagnostico de memoria y comparacion de planificadores");
             System.out.println("  --traza         anade la traza completa de la ejecucion Round Robin");
             System.out.println("  --memoria       demostracion de los tres esquemas de memoria");
@@ -69,6 +71,8 @@ public final class Main {
             System.out.println("  --sincronizacion  semaforos, productor/consumidor y condiciones");
             System.out.println("  --medicion      coste medido de los tres mecanismos, en ticks");
             System.out.println("  --shell         sesion de terminal: ordenes, tuberias y llamadas");
+            System.out.println("  --ui            abre la ventana con el sistema corriendo dentro");
+            System.out.println("  --captura [dir] las mismas vistas en PNG, sin pantalla (por defecto capturas/)");
             System.out.println("  --csv           con --medicion, saca las cifras para hoja de calculo");
             return;
         }
@@ -77,6 +81,24 @@ public final class Main {
         if (!(flag(args, "--medicion") && flag(args, "--csv"))) {
             System.out.println(PosVersion.FULL);
             System.out.println();
+        }
+
+        // La ventana y las capturas van antes que todo lo demas: no imprimen un
+        // informe, abren una vista, y las cabeceras de texto estorbarian.
+        if (flag(args, "--ui")) {
+            pos.ui.swing.UiLaunch.open();
+            return;
+        }
+
+        if (flag(args, "--captura")) {
+            String dir = valor(args, "--captura", "capturas");
+            try {
+                pos.ui.swing.UiLaunch.capture(dir);
+            } catch (IOException e) {
+                System.err.println("no se pudo capturar: " + e.getMessage());
+                System.exit(1);
+            }
+            return;
         }
 
         if (flag(args, "--memoria")) {
@@ -230,6 +252,20 @@ public final class Main {
         System.out.println();
         System.out.println("lectura: FCFS deja esperando al proceso corto detras de los dos largos;");
         System.out.println("el turno rotatorio le da CPU antes, a cambio de mas cambios de contexto.");
+    }
+
+    /** Valor que sigue a una bandera, o el valor por defecto si no viene. */
+    private static String valor(String[] args, String name, String fallback) {
+        for (int i = 0; i < args.length; i++) {
+            if (!name.equals(args[i])) {
+                continue;
+            }
+            if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                return args[i + 1];
+            }
+            return fallback;
+        }
+        return fallback;
     }
 
     private static boolean flag(String[] args, String name) {

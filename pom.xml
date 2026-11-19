@@ -43,7 +43,11 @@
         <configuration>
           <release>21</release>
           <compilerArgs>
-            <arg>-Xlint:all</arg>
+            <!-- Se excluye la revision de serializacion: las vistas de Swing
+                 heredan Serializable de JComponent y nunca se serializan, asi
+                 que exigir serialVersionUID en cada panel solo llena el codigo
+                 de campos que no significan nada. -->
+            <arg>-Xlint:all,-serial</arg>
             <arg>-Werror</arg>
           </compilerArgs>
         </configuration>
