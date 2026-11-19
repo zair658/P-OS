@@ -39,6 +39,8 @@ java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --swap
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --disco
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --concurrencia
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --sincronizacion
+java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --medicion
+java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --medicion --csv
 ```
 
 `--memoria` ejecuta la demostración de los tres esquemas de memoria: el mismo
@@ -55,8 +57,11 @@ y un abrazo mortal entre dos hilos que el sistema detecta en vez de colgarse.
 `--sincronizacion` hace lo mismo con los mecanismos de espera: el mismo contador
 protegido con cerrojo y con semáforo, un productor y un consumidor que se dan el
 turno con dos semáforos sin gastar CPU, y un monitor con variable de condición
-donde se ve que el despertado tiene que volver a pedir el cerrojo. El arranque
-sin argumentos compara los planificadores.
+donde se ve que el despertado tiene que volver a pedir el cerrojo. `--medicion`
+no enseña mecanismos: cronometra los tres con el mismo problema y saca la tabla
+de costes en ticks, con la columna de resultado al lado para que no se confunda
+«más barato» con «correcto»; `--medicion --csv` la da en formato de hoja de
+cálculo. El arranque sin argumentos compara los planificadores.
 
 ## Documentación
 
@@ -76,8 +81,8 @@ sin argumentos compara los planificadores.
   espera, la cesión directa, la detección de ciclos y la demostración de la
   carrera.
 - `docs/fase-06-sincronizacion.md`: qué añadió la sexta, los semáforos, las
-  variables de condición atadas a un cerrojo, la readquisición al despertar y la
-  comparación entre ambos mecanismos.
+  variables de condición atadas a un cerrojo, la readquisición al despertar, la
+  comparación entre ambos mecanismos y la tabla de costes medida con `--medicion`.
 
 ## Convenciones
 

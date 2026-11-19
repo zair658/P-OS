@@ -253,9 +253,111 @@ La regla práctica que se deduce de la tabla: si el problema se puede enunciar
 como *cuántos*, semáforo; si se enuncia como *cuándo*, condición. Contar huecos
 es un semáforo. "Avisadme cuando el fichero esté cerrado" es una condición.
 
+Todo esto se puede defender sin apelar al gusto: la sección 7 mide los mismos
+mecanismos con el mismo problema y pone un número en cada fila de esta tabla.
+
 ---
 
-## 7. Lo que no se ha hecho, y por qué
+## 7. Qué cuesta cada mecanismo, medido
+
+La sección 6 los compara por lo que son. Falta lo que cuestan, que es la mitad
+de la respuesta cuando alguien pregunta "¿y por qué este y no el otro?".
+
+`p-os --medicion` corre tres escenarios y saca las cifras en **ticks**, que aquí
+es la única unidad honesta: un tick es una instrucción retirada. Todo se mide con
+cuanto 1, porque el contador sin protección solo pierde actualizaciones si al hilo
+lo desalojan entre `LOAD` y `STORE`, y con cuanto 1 lo desalojan en cada
+instrucción. El precio de forzar el fallo es que entonces cada tick es también un
+cambio de contexto, así que esa columna saldría igual que el reloj y no se imprime:
+contaría lo mismo dos veces. Quien la quiera, la tiene en la traza.
+
+### 7.1 El mismo contador, tres protecciones
+
+Dos hilos, cinco incrementos cada uno; debería quedar 10.
+
+| mecanismo | resultado | reloj | bloqueos | despertares | sincro |
+|---|---|---|---|---|---|
+| sin protección | incorrecto: 5 de 10 | 97 | 0 | 0 | 0 |
+| cerrojo | correcto | 117 | 1 | 1 | 20 |
+| semáforo de valor 1 | correcto | 118 | 1 | 1 | 21 |
+
+La fila rota es la más barata, y ese es el primer aviso: no es más rápida, es
+más corta. Hace menos trabajo porque pierde cinco actualizaciones por el camino.
+Una tabla de tiempos sin columna de resultado habría recomendado el error.
+
+Entre cerrojo y semáforo hay un tick de diferencia, y no es ruido: el semáforo
+necesita `SEM_INIT`, que es la instrucción que crea la tabla. Las dos filas
+ejecutan las mismas 20 operaciones de sincronización (10 `LOCK` y 10 `UNLOCK`;
+el semáforo, 10 `SEM_WAIT` y 10 `SEM_POST` más la creación). Para este problema,
+elegir entre los dos no cambia nada medible, y eso también es una respuesta: un
+semáforo de valor uno *es* un cerrojo con otro nombre, así que solo se justifica
+cuando además hace falta contar.
+
+### 7.2 Tres piezas por un hueco de uno
+
+El consumidor debería llevarse las tres piezas.
+
+| mecanismo | resultado | reloj | bloqueos | despertares | sincro | espera |
+|---|---|---|---|---|---|---|
+| giro sobre cerrojo | correcto | 107 | 6 | 6 | 14 | 47,5 |
+| dos semáforos | correcto | 88 | 5 | 5 | 14 | 35,5 |
+| un permiso por tres | **interbloqueo** | 30 | 2 | 0 | 5 | — |
+| cerrojo y condición | correcto | 110 | 6 | 6 | 17 | 49,0 |
+
+El giro acierta y cuesta 19 ticks más que los semáforos (un 22 %). No está
+esperando: está dando vueltas. Cada vuelta pide el cerrojo, mira la bandera y lo
+suelta. La espera media lo delata mejor que el reloj: 47,5 ticks por hilo frente a
+35,5. Girar no es esperar mejor, es esperar varias veces.
+
+La fila del permiso único es la que enseña para qué sirve medir dos cosas a la
+vez. El productor avisa una sola vez, al final, en vez de avisar por pieza; el
+consumidor se duerme esperando la segunda y el productor se queda sin hueco
+libre. Los dos acaban dormidos, el núcleo lo declara interbloqueo y no se copia
+ninguna pieza. Es la fila más barata de la tabla —30 ticks, un 66 % menos que los
+semáforos— y la única rota. En la columna de espera pone una raya porque no
+terminó ningún hilo: sin volcado de memoria no hay dato que comparar.
+
+La condición es la más cara de las tres que funcionan: 22 ticks más que los
+semáforos (un 25 %) y 3 operaciones de sincronización más. No es un defecto, es
+el precio anunciado en 4.1: el despertado no hereda el cerrojo porque lo tiene
+quien señala, así que da un rodeo para volver a entrar. Se paga a gusto cuando la
+espera no se puede contar con permisos y hay que reevaluar una condición con el
+cerrojo en la mano.
+
+### 7.3 El coste crece con el trabajo, no con el mecanismo
+
+El mismo contador con cerrojo, cambiando solo el número de vueltas:
+
+| vueltas | valor | reloj | ticks por vuelta | sincro |
+|---|---|---|---|---|
+| 2 | 4 | 51 | 25,50 | 8 |
+| 5 | 10 | 117 | 23,40 | 20 |
+| 10 | 20 | 227 | 22,70 | 40 |
+| 20 | 40 | 447 | 22,35 | 80 |
+
+Los ticks por vuelta tienden a un valor fijo: el arranque solo se nota en la
+primera fila. La sincronización crece exactamente a cuatro operaciones por vuelta
+(dos `LOCK` y dos `UNLOCK`) y no se degrada al crecer la carga, porque no queda
+estado de una vuelta para la siguiente: lo único que persiste es el cerrojo, y se
+suelta siempre. Una columna que creciera aquí sería la señal de una fuga.
+
+### 7.4 Lo que estas cifras no dicen
+
+- **No son milisegundos.** No hay caché, ni predictor, ni memoria real. Sirven
+  para comparar entre sí dentro de este simulador; extrapolarlas a un procesador
+  de verdad sería inventar.
+- **Todo está medido con cuanto 1**, que es el peor caso para el planificador:
+  un cambio de contexto por instrucción. Con un cuanto mayor el reparto de ticks
+  cambiaría y también las cifras; lo que no cambiaría es el orden de las filas,
+  que es lo que la tabla defiende.
+- **Un escenario, tres piezas.** No es un banco de pruebas, es una demostración:
+  el tamaño está elegido para que se lea en una pantalla.
+- **Y son reproducibles.** Dos ejecuciones dan las mismas cifras, y hay una
+  prueba que lo comprueba. Una tabla que cambia en cada ejecución no prueba nada.
+
+---
+
+## 8. Lo que no se ha hecho, y por qué
 
 - **Monitores con semántica de Hoare** (el que señala cede la CPU al señalado de
   inmediato). Se ha implementado la de Mesa, que es la de los sistemas reales:
@@ -274,9 +376,9 @@ es un semáforo. "Avisadme cuando el fichero esté cerrado" es una condición.
 
 ---
 
-## 8. Pruebas
+## 9. Pruebas
 
-De 184 a **224 pruebas**, todas en verde. Las 40 nuevas:
+De 184 a **233 pruebas**, todas en verde. Las 49 nuevas:
 
 | Prueba | Qué comprueba |
 |---|---|
@@ -285,6 +387,7 @@ De 184 a **224 pruebas**, todas en verde. Las 40 nuevas:
 | `AssemblerTest` (+7) | Carga de las seis instrucciones, valor cero permitido, negativo rechazado, falta de operandos, exceso de operandos |
 | `InterpreterTest` (+3) | `SEM_WAIT` cobra el permiso y bloquea al segundo, `SEM_POST` devuelve, `COND_WAIT` bloquea siempre |
 | `KernelSyncTest` (13) | Exclusión con semáforo, el que espera no gasta CPU, productor/consumidor, monitor completo, readquisición, señal a uno solo, señal perdida, `COND_WAIT` sin cerrojo falla, broadcast, semáforo inexistente, traza reproducible, la tabla de cerrojos sigue vacía |
+| `MetricsDemoTest` (9) | Que la tabla diga la verdad y no cambie: el contador sin protección pierde, cerrojo y semáforo lo salvan, el semáforo de valor uno no es más barato, los tres mecanismos entregan las piezas, el permiso único acaba en interbloqueo, el giro cuesta más que dormir, la condición cuesta más que el semáforo, las cifras se repiten, el coste por vuelta no crece |
 
 Las dos que más costaron escribir fueron las de la traza, y por un motivo que
 conviene contar: la primera versión de `sinPermisoSeDuerme` buscaba el primer
@@ -297,7 +400,7 @@ dormir por el cerrojo y que no hay ni un turno suyo entre la señal y la herenci
 
 ---
 
-## 9. Estado y siguiente paso
+## 10. Estado y siguiente paso
 
 Con esto el sistema tiene las tres piezas clásicas de la sincronización a bajo
 nivel: cerrojo, semáforo y condición, las tres sobre la misma cola de espera y
@@ -309,5 +412,6 @@ Lo que queda por delante, en el orden en que tiene sentido:
    ser una demostración por argumentos.
 2. **Paginación bajo demanda con reemplazo en ejecución**, que hoy existe por
    separado del planificador.
-3. **Medición**: comparar el coste de los tres mecanismos con el mismo problema,
-   en ticks y en cambios de contexto, para tener la tabla que falta.
+
+La medición que faltaba ya está: la sección 7 es la tabla que este capítulo
+necesitaba para defender las decisiones de la 6 sin apelar al gusto.

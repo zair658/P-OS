@@ -25,6 +25,7 @@ import pos.sched.Scheduler;
  *   java -jar p-os.jar --swap          paginas por demanda, intercambio y politicas
  *   java -jar p-os.jar --concurrencia  cerrojos, exclusion mutua e interbloqueo
  *   java -jar p-os.jar --sincronizacion  semaforos y variables de condicion
+ *   java -jar p-os.jar --medicion      cuanto cuesta cada mecanismo de sincronizacion
  *   java -jar p-os.jar --version       version y salida
  * </pre>
  */
@@ -57,7 +58,7 @@ public final class Main {
             return;
         }
         if (flag(args, "--help") || flag(args, "-h")) {
-            System.out.println("uso: p-os [--traza] [--memoria] [--swap] [--disco] [--concurrencia] [--sincronizacion] [--version] [--help]");
+            System.out.println("uso: p-os [--traza] [--memoria] [--swap] [--disco] [--concurrencia] [--sincronizacion] [--medicion [--csv]] [--version] [--help]");
             System.out.println("  sin argumentos  diagnostico de memoria y comparacion de planificadores");
             System.out.println("  --traza         anade la traza completa de la ejecucion Round Robin");
             System.out.println("  --memoria       demostracion de los tres esquemas de memoria");
@@ -65,11 +66,16 @@ public final class Main {
             System.out.println("  --disco         demostracion del sistema de ficheros y los tres metodos");
             System.out.println("  --concurrencia  cerrojos, exclusion mutua e interbloqueo");
             System.out.println("  --sincronizacion  semaforos, productor/consumidor y condiciones");
+            System.out.println("  --medicion      coste medido de los tres mecanismos, en ticks");
+            System.out.println("  --csv           con --medicion, saca las cifras para hoja de calculo");
             return;
         }
 
-        System.out.println(PosVersion.FULL);
-        System.out.println();
+        // Con --medicion --csv la salida es para una hoja de calculo: sin cabecera.
+        if (!(flag(args, "--medicion") && flag(args, "--csv"))) {
+            System.out.println(PosVersion.FULL);
+            System.out.println();
+        }
 
         if (flag(args, "--memoria")) {
             MemoryDemo.run();
@@ -93,6 +99,11 @@ public final class Main {
 
         if (flag(args, "--sincronizacion")) {
             SyncDemo.run();
+            return;
+        }
+
+        if (flag(args, "--medicion")) {
+            MetricsDemo.run(flag(args, "--csv"));
             return;
         }
 
