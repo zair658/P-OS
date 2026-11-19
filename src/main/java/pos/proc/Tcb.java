@@ -33,6 +33,7 @@ public final class Tcb {
     private String reacquireLock;
     private TurnOutcome outcome = null;
     private Thread carrier;
+    private HostedTask hosted;
 
     Tcb(Pcb process, int localId, long arrivalTick) {
         this.process = process;
@@ -206,6 +207,21 @@ public final class Tcb {
 
     public void setCarrier(Thread carrier) {
         this.carrier = carrier;
+    }
+
+    /**
+     * Tarea nativa del hilo, o {@code null} si ejecuta un programa interpretado.
+     *
+     * Se guarda en el hilo y no en el proceso porque el mismo proceso podria
+     * tener un hilo interpretado y otro nativo; hoy no ocurre, pero el dato
+     * pertenece al hilo por la misma razon que el contador de programa.
+     */
+    public HostedTask hosted() {
+        return hosted;
+    }
+
+    public void attachHosted(HostedTask hosted) {
+        this.hosted = hosted;
     }
 
     /** Tiempo de retorno: desde que llego hasta que termino. */

@@ -25,6 +25,16 @@ public final class ProcessFactory {
     }
 
     /**
+     * Marca el proceso como terminado sin mirar sus hilos.
+     *
+     * Lo usa el nucleo al matar un proceso: los hilos mueren uno a uno y luego
+     * el contenedor se cierra, se hayan enterrado todos o no.
+     */
+    public static void terminate(Pcb process) {
+        process.setState(State.TERMINATED);
+    }
+
+    /**
      * Cierra el proceso cuando se entierra el ultimo de sus hilos.
      *
      * @return true si el proceso se quedo sin hilos vivos

@@ -8,10 +8,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import pos.base.PosFault;
+import pos.fs.FileSystem;
 import pos.mm.AddressSpace;
 import pos.mm.MemorySetup;
+import pos.proc.Assembler;
 import pos.proc.BlockKind;
 import pos.proc.ExecutionHost;
+import pos.proc.HostedTask;
+import pos.proc.Instruction;
 import pos.proc.Interpreter;
 import pos.proc.Pcb;
 import pos.proc.ProcessFactory;
@@ -24,6 +28,7 @@ import pos.sched.SchedulingDecision;
 import pos.sync.ConditionManager;
 import pos.sync.LockManager;
 import pos.sync.SemaphoreManager;
+import pos.sys.SystemCalls;
 
 /**
  * El nucleo: el unico que decide quien ejecuta.
@@ -44,6 +49,13 @@ import pos.sync.SemaphoreManager;
  */
 public final class Kernel implements ExecutionHost {
 
+    /** Tope de procesos vivos: mas alla, la memoria del escenario no da de si. */
+    public static final int MAX_PROCESSES = 32;
+
+    /** Programa de mentira que llevan los procesos nativos, como el terminal. */
+    private static final Program TRAMPOLINE = new Program("nativa",
+            List.of(new Instruction.Nop(), new Instruction.Exit()));
+
     private final Scheduler scheduler;
     private final MemorySetup memory;
     private final Trace trace;
@@ -58,6 +70,7 @@ public final class Kernel implements ExecutionHost {
     private final LockManager locks = new LockManager();
     private final SemaphoreManager semaphores = new SemaphoreManager();
     private final ConditionManager conditions = new ConditionManager();
+    private final SystemCalls syscalls = new SystemCalls(this);
     private final Map<Integer, List<Integer>> dumps = new LinkedHashMap<>();
 
     private long clock;
@@ -116,6 +129,28 @@ public final class Kernel implements ExecutionHost {
         if (started) {
             throw new IllegalStateException("no se pueden crear procesos con el nucleo en marcha");
         }
+        return boot(name, program, arrivalTick, null);
+    }
+
+    /**
+     * Crea un proceso cuyo primer hilo ejecuta codigo nativo.
+     *
+     * El programa que se le asigna es un trampolin de dos instrucciones que no
+     * llega a ejecutarse nunca: sirve para que el bloque de control tenga un
+     * programa como cualquier otro y para que la tabla de resultados muestre
+     * algo coherente. Quien ejecuta es la tarea enganchada al hilo.
+     */
+    public Pcb createHostedProcess(String name, HostedTask task) {
+        if (started) {
+            throw new IllegalStateException("no se pueden crear procesos con el nucleo en marcha");
+        }
+        if (task == null) {
+            throw new IllegalArgumentException("un proceso nativo necesita su tarea");
+        }
+        return boot(name, TRAMPOLINE, clock, task);
+    }
+
+    private Pcb boot(String name, Program program, long arrivalTick, HostedTask task) {
         int id = nextProcessId;
         // La memoria se pide antes de consumir el identificador: si no cabe, el
         // proceso no llega a existir y no queda un hueco en la numeracion.
@@ -131,16 +166,90 @@ public final class Kernel implements ExecutionHost {
         trace.add(clock, EventKind.MEMORY_ALLOC, "p" + id,
                 memory.scheme().name() + ": " + space.physicalUnits() + " unidades fisicas en "
                         + space.reservedSpans().size() + " tramo(s), " + wasteText(space));
-        createThread(process, 0, null);
+        createThread(process, 0, null, task);
         return process;
+    }
+
+    /**
+     * Arranca un proceso con el nucleo ya en marcha.
+     *
+     * Es lo que hace la llamada {@code spawn} de la terminal. Se admite en
+     * caliente porque si no, la terminal seria un adorno: un sistema donde no se
+     * pueden crear procesos desde dentro no demuestra nada de planificacion. El
+     * hilo nuevo entra en la cola de listos en la siguiente vuelta del ciclo,
+     * cuando el nucleo mire las llegadas.
+     *
+     * Hay un tope de procesos y la memoria se comprueba igual que en el arranque:
+     * si no cabe, la llamada falla y el proceso no llega a existir.
+     *
+     * @throws PosFault si el codigo no ensambla, si no cabe en memoria o si se
+     *     ha llegado al tope
+     */
+    public Pcb spawnProcess(String name, String source) {
+        if (!started) {
+            throw new IllegalStateException("para arrancar en caliente el nucleo tiene que estar en marcha");
+        }
+        if (processes.size() >= MAX_PROCESSES) {
+            throw new PosFault("no se pueden crear mas de " + MAX_PROCESSES + " procesos");
+        }
+        Program program = Assembler.load(name, source);
+        Pcb child = boot(name, program, clock, null);
+        trace.add(clock, EventKind.PROCESS_CREATE, "p" + child.id(),
+                "arrancado desde otro proceso, entra en listos en la proxima vuelta");
+        return child;
+    }
+
+    /**
+     * Termina un proceso y todos sus hilos.
+     *
+     * Los hilos se sacan de las colas antes de marcarlos: si uno se quedara en
+     * la de listos, el planificador le daria el turno a un muerto y el hilo real
+     * que lo transporta ya no estaria esperando, con lo que el nucleo se
+     * quedaria esperando un turno que no vuelve.
+     *
+     * @return cuantos hilos estaban vivos y se han terminado
+     */
+    public int kill(int pid) {
+        Pcb process = processes.get(pid);
+        if (process == null) {
+            throw new PosFault("no existe el proceso " + pid);
+        }
+        if (process.state() == State.TERMINATED) {
+            return 0;
+        }
+        int killed = 0;
+        for (Tcb thread : process.threads()) {
+            if (thread.state() == State.TERMINATED) {
+                continue;
+            }
+            ready.remove(thread);
+            blocked.remove(thread);
+            thread.clearBlock();
+            thread.setState(State.TERMINATED);
+            thread.markFinished(clock);
+            thread.markFailed("terminado por kill, no por su propio EXIT");
+            killed++;
+        }
+        ProcessFactory.terminate(process);
+        captureFinalMemory(process);
+        int pending = syscalls.release(pid);
+        trace.add(clock, EventKind.EXIT, "p" + pid,
+                "kill: " + killed + " hilo(s) terminados, " + pending
+                        + " descriptor(es) descartados sin guardar");
+        return killed;
     }
 
     @Override
     public void createThread(Pcb process, int entryPc, Tcb parent) {
+        createThread(process, entryPc, parent, null);
+    }
+
+    private void createThread(Pcb process, int entryPc, Tcb parent, HostedTask task) {
         long arrival = parent == null ? process.arrivalTick() : clock;
         Tcb thread = ProcessFactory.newThread(process, process.threads().size() + 1, arrival);
         thread.setPc(entryPc);
         thread.setState(State.NEW);
+        thread.attachHosted(task);
         allThreads.add(thread);
 
         Thread carrier = new Thread(new ProcessThread(this, thread, interpreter), thread.id());
@@ -650,6 +759,16 @@ public final class Kernel implements ExecutionHost {
 
     public List<Tcb> threads() {
         return List.copyOf(allThreads);
+    }
+
+    /** Las llamadas al sistema, vistas desde dentro del nucleo. */
+    public SystemCalls syscalls() {
+        return syscalls;
+    }
+
+    /** Engancha el sistema de ficheros a las llamadas de fichero. */
+    public void attachFilesystem(FileSystem fs) {
+        syscalls.attachFilesystem(fs);
     }
 
     public KernelReport report() {

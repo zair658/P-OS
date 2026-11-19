@@ -518,6 +518,30 @@ Se implementan en este orden, que es también el orden de sacrificio:
 Un comando permite cambiar la vista activa del panel. La terminal no pierde el
 foco al hacerlo.
 
+### 12.4 Lo construido en la fase 7
+
+La fase 7 entrega la terminal del diseño con tres diferencias que conviene tener
+escritas, porque son decisiones y no pendientes:
+
+1. **Las tuberías no crean procesos.** Cada etapa es una orden que escribe en un
+   buffer de texto y la siguiente lo lee. No hay `fork` ni descriptores
+   compartidos, así que `cat fichero | head -n 1` lee el fichero entero. Se
+   arreglará cuando haya señales, no antes: sin `SIGPIPE` no hay forma de cortar
+   la primera etapa.
+2. **La entrada es guionizada.** `Console` entrega líneas con su tic, no teclas
+   de un terminal real. Con eso la sesión es determinista y las pruebas pueden
+   afirmar sobre el texto que sale. El historial existe (`history`), pero no es
+   navegable con flechas ni hay autocompletado: eso pide un terminal de verdad.
+3. **Las familias de comandos son tres, no seis.** Ficheros, texto y sistema.
+   Planificación, sincronización e interbloqueo se ven desde las demostraciones
+   (`--traza`, `--concurrencia`, `--sincronizacion`), no desde órdenes de la
+   terminal; los trabajos en segundo plano necesitan señales, que tampoco hay.
+
+Lo que sí está entero: la frontera de llamadas al sistema, la tabla de
+descriptores por proceso, la terminal como proceso nativo con cuota y bloqueos,
+el análisis de línea con comillas, tuberías y redirecciones, y la contabilidad
+de llamadas por código y por proceso.
+
 ---
 
 ## 13. Interfaz
@@ -571,7 +595,7 @@ cerrada y probada. El orden está elegido por dependencias, no por vistosidad.
 | F4 | Memoria virtual, fallo de página, FIFO, LRU, OPT | Contador de fallos correcto y anomalía de Belady reproducida |
 | F5 | Sistema de ficheros e imagen, tres métodos de asignación | Persistencia entre sesiones y verificación de integridad |
 | F6 | Núcleo completo, métricas, traza, comparación de algoritmos | Misma carga con cuatro planificadores y tabla correcta |
-| F7 | Terminal, comandos por familias, redirección y tuberías | Guion de comandos completo sin interfaz gráfica |
+| F7 | Terminal, comandos por familias, redirección y tuberías | Guion de comandos completo sin interfaz gráfica (hecho: `--shell`) |
 | F8 | Sincronización, grafo de recursos, banquero | Abrazo mortal provocado y detectado de forma reproducible |
 | F9 | Interfaz gráfica, cinco vistas, tabla de resultados | Recorrido completo de la demo sobre la interfaz |
 | F10 | Empaquetado en ejecutable y en imagen de máquina virtual | Arranque a pantalla completa sin escritorio visible |
@@ -579,6 +603,8 @@ cerrada y probada. El orden está elegido por dependencias, no por vistosidad.
 
 El sistema es usable desde F7, sin interfaz. Ese es el hito que hay que alcanzar
 cuanto antes: a partir de ahí, todo lo demás es mejora, no requisito.
+Alcanzado: con la fase 7 se puede abrir una sesión completa (`--shell`) sobre una
+imagen de ficheros, sin tocar una línea de interfaz gráfica.
 
 ---
 

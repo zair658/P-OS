@@ -60,7 +60,12 @@ public final class ProcessThread implements Runnable {
             if (!kernel.baton().consumeBudget()) {
                 return TurnOutcome.PREEMPTED;
             }
-            StepResult result = interpreter.step(kernel, tcb);
+            // Un hilo interpretado ejecuta la siguiente instruccion; uno con
+            // tarea nativa ejecuta su siguiente paso. Para el bucle de aqui
+            // abajo da lo mismo: ambos devuelven lo mismo.
+            StepResult result = tcb.hosted() == null
+                    ? interpreter.step(kernel, tcb)
+                    : tcb.hosted().step(kernel, tcb);
             switch (result) {
                 case CONTINUE -> {
                     // sigue gastando cuanto

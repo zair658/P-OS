@@ -17,6 +17,7 @@ una terminal que es un proceso más del sistema.
 | 4 | Sistema de ficheros, imagen por bloques y tres métodos de asignación | terminada |
 | 5 | Cerrojos, exclusión mutua y detección de interbloqueo | terminada |
 | 6 | Semáforos, variables de condición y monitores | terminada |
+| 7 | Llamadas al sistema, descriptores y terminal | terminada |
 
 Las fases restantes están descritas en `docs/arquitectura.md`.
 
@@ -41,6 +42,7 @@ java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --concurrencia
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --sincronizacion
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --medicion
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --medicion --csv
+java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --shell
 ```
 
 `--memoria` ejecuta la demostración de los tres esquemas de memoria: el mismo
@@ -61,7 +63,11 @@ donde se ve que el despertado tiene que volver a pedir el cerrojo. `--medicion`
 no enseña mecanismos: cronometra los tres con el mismo problema y saca la tabla
 de costes en ticks, con la columna de resultado al lado para que no se confunda
 «más barato» con «correcto»; `--medicion --csv` la da en formato de hoja de
-cálculo. El arranque sin argumentos compara los planificadores.
+cálculo. `--shell` monta una imagen de ficheros y abre una sesión de terminal
+sobre ella: ordenes con tuberías y redirecciones, dos procesos de cálculo
+compartiendo procesador con la sesión, y la tabla de llamadas que el núcleo
+atendió, con su coste en tics. El arranque sin argumentos compara los
+planificadores.
 
 ## Documentación
 
@@ -83,6 +89,9 @@ cálculo. El arranque sin argumentos compara los planificadores.
 - `docs/fase-06-sincronizacion.md`: qué añadió la sexta, los semáforos, las
   variables de condición atadas a un cerrojo, la readquisición al despertar, la
   comparación entre ambos mecanismos y la tabla de costes medida con `--medicion`.
+- `docs/fase-07-llamadas.md`: qué añadió la séptima, la frontera de las llamadas
+  al sistema, la tabla de descriptores, la terminal como proceso, el intérprete
+  de líneas con tuberías y la contabilidad por código.
 
 ## Convenciones
 
