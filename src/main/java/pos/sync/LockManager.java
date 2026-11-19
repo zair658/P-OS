@@ -1,8 +1,6 @@
 package pos.sync;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +38,7 @@ public final class LockManager {
 
         private final String name;
         private Tcb owner;
-        private final Deque<Tcb> waiting = new ArrayDeque<>();
+        private final WaitQueue waiting = new WaitQueue();
 
         private Slot(String name) {
             this.name = name;
@@ -89,9 +87,6 @@ public final class LockManager {
 
     private final Map<String, Slot> slots = new LinkedHashMap<>();
 
-    /** Hilos que acaban de heredar un cerrojo y esperan a que el nucleo los atienda. */
-    private final Deque<Tcb> granted = new ArrayDeque<>();
-
     /**
      * Intenta tomar un cerrojo.
      *
@@ -111,7 +106,7 @@ public final class LockManager {
             throw new PosFault(thread.id() + ": ya tiene el cerrojo '" + name
                     + "' y los cerrojos de este sistema no son reentrantes");
         }
-        slot.waiting.addLast(thread);
+        slot.waiting.enqueue(thread);
         return false;
     }
 
@@ -126,13 +121,12 @@ public final class LockManager {
             throw new PosFault(thread.id() + ": intenta liberar el cerrojo '" + name
                     + "', que no tiene");
         }
-        Tcb next = slot.waiting.pollFirst();
+        Tcb next = slot.waiting.handOff();
         if (next == null) {
             slot.owner = null;
             return null;
         }
         slot.owner = next;
-        granted.addLast(next);
         return next;
     }
 
@@ -145,9 +139,11 @@ public final class LockManager {
      * listos.
      */
     public List<Tcb> drainGranted() {
-        List<Tcb> woken = new ArrayList<>(granted);
-        granted.clear();
-        return woken;
+        List<Tcb> woken = new ArrayList<>();
+        for (Slot slot : slots.values()) {
+            woken.addAll(slot.waiting.drainGranted());
+        }
+        return List.copyOf(woken);
     }
 
     /**
@@ -176,6 +172,17 @@ public final class LockManager {
     public int waitingCount(String name) {
         Slot slot = slots.get(name);
         return slot == null ? 0 : slot.waiting.size();
+    }
+
+    /** Hilos bloqueados en algun cerrojo, con el nombre del cerrojo. */
+    public List<String> describeBlocked() {
+        List<String> lines = new ArrayList<>();
+        for (Slot slot : slots.values()) {
+            for (Tcb waiter : slot.waiting.threads()) {
+                lines.add(waiter.id() + " espera el cerrojo '" + slot.name + "'");
+            }
+        }
+        return List.copyOf(lines);
     }
 
     /** Cerrojos usados y en uso, para la demostracion. */
@@ -212,7 +219,7 @@ public final class LockManager {
             if (slot.owner == null) {
                 continue;
             }
-            for (Tcb waiter : slot.waiting) {
+            for (Tcb waiter : slot.waiting.threads()) {
                 waitsFor.put(waiter, slot.owner);
                 waitLock.put(waiter, slot.name);
             }
@@ -298,7 +305,7 @@ public final class LockManager {
             text.append(slot.owner == null ? "libre" : "en poder de " + slot.owner.id());
             if (!slot.waiting.isEmpty()) {
                 List<String> ids = new ArrayList<>();
-                for (Tcb waiter : slot.waiting) {
+                for (Tcb waiter : slot.waiting.threads()) {
                     ids.add(waiter.id());
                 }
                 text.append("; esperan ").append(String.join(", ", ids));

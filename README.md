@@ -16,6 +16,7 @@ una terminal que es un proceso más del sistema.
 | 3b | Páginas por demanda, área de intercambio y políticas FIFO / LRU / OPT | terminada |
 | 4 | Sistema de ficheros, imagen por bloques y tres métodos de asignación | terminada |
 | 5 | Cerrojos, exclusión mutua y detección de interbloqueo | terminada |
+| 6 | Semáforos, variables de condición y monitores | terminada |
 
 Las fases restantes están descritas en `docs/arquitectura.md`.
 
@@ -37,6 +38,7 @@ java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --memoria
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --swap
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --disco
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --concurrencia
+java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --sincronizacion
 ```
 
 `--memoria` ejecuta la demostración de los tres esquemas de memoria: el mismo
@@ -49,8 +51,12 @@ Belady reproducida, un proceso con más páginas que marcos que recupera sus dat
 del área de intercambio, y el fichero `/intercambio` mirado por dentro.
 `--concurrencia` hace lo mismo con la sincronización: la carrera entre dos hilos
 que pierde actualizaciones bajo Round Robin, la traza del cerrojo que la arregla
-y un abrazo mortal entre dos hilos que el sistema detecta en vez de colgarse. El
-arranque sin argumentos compara los planificadores.
+y un abrazo mortal entre dos hilos que el sistema detecta en vez de colgarse.
+`--sincronizacion` hace lo mismo con los mecanismos de espera: el mismo contador
+protegido con cerrojo y con semáforo, un productor y un consumidor que se dan el
+turno con dos semáforos sin gastar CPU, y un monitor con variable de condición
+donde se ve que el despertado tiene que volver a pedir el cerrojo. El arranque
+sin argumentos compara los planificadores.
 
 ## Documentación
 
@@ -69,6 +75,9 @@ arranque sin argumentos compara los planificadores.
 - `docs/fase-05-concurrencia.md`: qué añadió la quinta, los cerrojos con cola de
   espera, la cesión directa, la detección de ciclos y la demostración de la
   carrera.
+- `docs/fase-06-sincronizacion.md`: qué añadió la sexta, los semáforos, las
+  variables de condición atadas a un cerrojo, la readquisición al despertar y la
+  comparación entre ambos mecanismos.
 
 ## Convenciones
 

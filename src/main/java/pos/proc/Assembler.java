@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import pos.base.PosFault;
 
 /**
@@ -24,6 +25,9 @@ import pos.base.PosFault;
  *   LOCK contador
  *   STORE 0
  *   UNLOCK contador
+ *   SEM_INIT huecos 1
+ *   SEM_WAIT huecos
+ *   COND_WAIT hay_datos contador
  *   CMP 10
  *   JZ fin
  *   JMP 0
@@ -32,6 +36,14 @@ import pos.base.PosFault;
  * El ';' y el '#' abren comentario en cualquier punto de la linea.
  */
 public final class Assembler {
+
+    /**
+     * Instrucciones que llevan dos argumentos.
+     *
+     * El resto solo admite uno, y se comprueba antes del switch para que el
+     * mensaje de error no dependa de por donde entre la instruccion.
+     */
+    private static final Set<String> DOS_ARGUMENTOS = Set.of("SEM_INIT", "COND_WAIT");
 
     private Assembler() {
         // clase de utilidad
@@ -90,12 +102,16 @@ public final class Assembler {
 
     private static Instruction parse(String program, String rawLine, String line,
             Map<String, Integer> labels, int index) {
-        String[] parts = line.split("\\s+");
+        String[] parts = line.split("\\s+", 4);
         String mnemonic = parts[0].toUpperCase(Locale.ROOT);
         String argument = parts.length > 1 ? parts[1] : null;
+        String second = parts.length > 2 ? parts[2] : null;
 
-        if (parts.length > 2) {
+        if (parts.length > 3) {
             throw error(program, rawLine, "sobran argumentos en '" + line + "'");
+        }
+        if (second != null && !DOS_ARGUMENTOS.contains(mnemonic)) {
+            throw error(program, rawLine, "'" + mnemonic + "' no lleva dos argumentos");
         }
 
         return switch (mnemonic) {
@@ -111,8 +127,21 @@ public final class Assembler {
             case "JZ" -> new Instruction.JumpIfEqual(target(program, rawLine, argument, labels));
             case "JNZ" -> new Instruction.JumpIfNotEqual(target(program, rawLine, argument, labels));
             case "SPAWN" -> new Instruction.Spawn(target(program, rawLine, argument, labels));
-            case "LOCK" -> new Instruction.Lock(lockName(program, rawLine, argument));
-            case "UNLOCK" -> new Instruction.Unlock(lockName(program, rawLine, argument));
+            case "LOCK" -> new Instruction.Lock(nombre(program, rawLine, argument, "cerrojo"));
+            case "UNLOCK" -> new Instruction.Unlock(nombre(program, rawLine, argument, "cerrojo"));
+            case "SEM_INIT" -> new Instruction.SemInit(
+                    nombre(program, rawLine, argument, "semaforo"),
+                    noNegativo(program, rawLine, second, "SEM_INIT"));
+            case "SEM_WAIT" -> new Instruction.SemWait(nombre(program, rawLine, argument, "semaforo"));
+            case "SEM_POST" -> new Instruction.SemPost(nombre(program, rawLine, argument, "semaforo"));
+            case "COND_WAIT" -> new Instruction.CondWait(
+                    nombre(program, rawLine, argument, "condicion"),
+                    nombre(program, rawLine, segundo(program, rawLine, second, "COND_WAIT"),
+                            "cerrojo"));
+            case "COND_SIGNAL" -> new Instruction.CondSignal(
+                    nombre(program, rawLine, argument, "condicion"));
+            case "COND_BROADCAST" -> new Instruction.CondBroadcast(
+                    nombre(program, rawLine, argument, "condicion"));
             default -> throw error(program, rawLine, "instruccion desconocida '" + mnemonic + "'");
         };
     }
@@ -142,17 +171,40 @@ public final class Assembler {
     }
 
     /**
-     * Nombre de cerrojo. Se acepta un identificador corriente y se respeta el
-     * uso de mayusculas, porque el nombre es la clave de la tabla de cerrojos.
+     * Nombre de un recurso de sincronizacion (cerrojo, semaforo o condicion).
+     *
+     * Se acepta un identificador corriente y se respeta el uso de mayusculas,
+     * porque el nombre es la clave de la tabla y 'contador' y 'Contador' tienen
+     * que ser cosas distintas, igual que en un sistema real.
+     *
+     * @param que sustantivo para el mensaje de error
      */
-    private static String lockName(String program, String line, String argument) {
+    private static String nombre(String program, String line, String argument, String que) {
         if (argument == null) {
-            throw error(program, line, "falta el nombre del cerrojo");
+            throw error(program, line, "falta el nombre del " + que);
         }
         if (!argument.matches("[A-Za-z_][A-Za-z0-9_]*")) {
-            throw error(program, line, "'" + argument + "' no es un nombre de cerrojo valido");
+            throw error(program, line, "'" + argument + "' no es un nombre de " + que + " valido");
         }
         return argument;
+    }
+
+    /** Segundo argumento obligatorio de una instruccion que lleva dos. */
+    private static String segundo(String program, String line, String second, String mnemonic) {
+        if (second == null) {
+            throw error(program, line, "'" + mnemonic + "' necesita un segundo argumento");
+        }
+        return second;
+    }
+
+    /** Numero que puede ser cero, como el valor inicial de un semaforo. */
+    private static int noNegativo(String program, String line, String argument, String mnemonic) {
+        String value = segundo(program, line, argument, mnemonic);
+        int number = number(program, line, value);
+        if (number < 0) {
+            throw error(program, line, mnemonic + " no admite un valor negativo");
+        }
+        return number;
     }
 
     private static int positive(String program, String line, String argument) {

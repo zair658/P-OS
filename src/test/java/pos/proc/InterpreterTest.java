@@ -19,7 +19,10 @@ class InterpreterTest {
         private final List<String> tomados = new ArrayList<>();
         private final List<String> soltados = new ArrayList<>();
         private final List<String> negados = new ArrayList<>();
+        private final List<String> semaforosCreados = new ArrayList<>();
+        private final List<String> condicionesUsadas = new ArrayList<>();
         private Tcb duenyo;
+        private int permisos;
         private long clock;
 
         @Override
@@ -50,6 +53,43 @@ class InterpreterTest {
                 duenyo = null;
                 soltados.add(name);
             }
+        }
+
+        @Override
+        public void initSemaphore(Tcb thread, String name, int initial) {
+            semaforosCreados.add(name + "=" + initial);
+            permisos = initial;
+        }
+
+        @Override
+        public boolean waitSemaphore(Tcb thread, String name) {
+            if (permisos > 0) {
+                permisos--;
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public void postSemaphore(Tcb thread, String name) {
+            permisos++;
+        }
+
+        @Override
+        public void waitCondition(Tcb thread, String condition, String lock) {
+            condicionesUsadas.add(condition + "/" + lock);
+        }
+
+        @Override
+        public Tcb signalCondition(Tcb thread, String condition) {
+            condicionesUsadas.add("signal " + condition);
+            return null;
+        }
+
+        @Override
+        public int broadcastCondition(Tcb thread, String condition) {
+            condicionesUsadas.add("broadcast " + condition);
+            return 0;
         }
     }
 
@@ -218,6 +258,65 @@ class InterpreterTest {
         assertEquals(List.of("contador"), host.negados);
         assertTrue(host.tomados.isEmpty(), "no se queda con nada");
         assertEquals(0, process.load(0), "y desde luego no entra en la seccion critica");
+    }
+
+    @Test
+    @DisplayName("SEM_WAIT cobra el permiso y pide bloqueo cuando ya no quedan")
+    void elSemaforoDaUnPermisoYBloqueaAlSegundo() {
+        Program program = Assembler.load("turno", """
+                SEM_INIT turno 1
+                SEM_WAIT turno
+                SET 1
+                STORE 0
+                EXIT
+                """);
+        Pcb process = proceso(program);
+        Host host = new Host();
+        Tcb thread = hilo(process);
+        Interpreter interpreter = new Interpreter();
+
+        assertEquals(StepResult.CONTINUE, interpreter.step(host, thread));
+        assertEquals(List.of("turno=1"), host.semaforosCreados);
+        // El unico permiso se lo lleva el primero: sigue sin bloquearse.
+        assertEquals(StepResult.CONTINUE, interpreter.step(host, thread));
+        assertEquals(0, host.permisos);
+
+        // El mismo programa para otro hilo: ya no queda permiso.
+        Tcb segundo = hilo(process);
+        segundo.setPc(1);
+        assertEquals(StepResult.BLOCKED, interpreter.step(host, segundo));
+    }
+
+    @Test
+    @DisplayName("SEM_POST devuelve el permiso sin bloquear a nadie")
+    void elSemaforoSeDevuelveConSemPost() {
+        Program program = Assembler.load("turno", """
+                SEM_INIT turno 0
+                SEM_POST turno
+                EXIT
+                """);
+        Pcb process = proceso(program);
+        Host host = new Host();
+        Tcb thread = hilo(process);
+        Interpreter interpreter = new Interpreter();
+
+        assertEquals(StepResult.CONTINUE, interpreter.step(host, thread));
+        assertEquals(StepResult.CONTINUE, interpreter.step(host, thread));
+        assertEquals(1, host.permisos);
+    }
+
+    @Test
+    @DisplayName("COND_WAIT bloquea siempre y llega con condicion y cerrojo")
+    void laCondicionSiempreBloquea() {
+        Program program = Assembler.load("avisa", """
+                COND_WAIT hay_datos contador
+                EXIT
+                """);
+        Pcb process = proceso(program);
+        Host host = new Host();
+
+        assertEquals(StepResult.BLOCKED, new Interpreter().step(host, hilo(process)));
+        assertEquals(List.of("hay_datos/contador"), host.condicionesUsadas);
     }
 
     @Test

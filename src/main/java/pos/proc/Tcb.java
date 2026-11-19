@@ -29,6 +29,8 @@ public final class Tcb {
     private long pendingSleep;
     private String failure;
     private String blockedOn;
+    private BlockKind blockedKind = BlockKind.NINGUNO;
+    private String reacquireLock;
     private TurnOutcome outcome = null;
     private Thread carrier;
 
@@ -126,7 +128,7 @@ public final class Tcb {
     }
 
     /**
-     * Cerrojo por el que el hilo esta esperando, o {@code null} si no espera
+     * Recurso por el que el hilo esta esperando, o {@code null} si no espera
      * ninguno.
      *
      * Es el dato que convierte la lista de bloqueados en un grafo de espera: el
@@ -142,9 +144,52 @@ public final class Tcb {
         this.blockedOn = blockedOn;
     }
 
-    /** true si el hilo esta bloqueado esperando un cerrojo y no una espera. */
+    public BlockKind blockedKind() {
+        return blockedKind;
+    }
+
+    public void setBlockedKind(BlockKind blockedKind) {
+        this.blockedKind = blockedKind;
+    }
+
+    /**
+     * Cerrojo que el hilo debe volver a tomar al despertar de una condicion.
+     *
+     * Es el unico estado que no existia antes de la fase 5b y el que hace que
+     * las condiciones no sean gratis. Quien espera en una condicion suelta el
+     * cerrojo, y cuando lo señalizan ya no lo tiene: el nucleo se lo vuelve a
+     * pedir antes de dejarle correr. Si se lo ha llevado otro, el hilo pasa de
+     * estar esperando la condicion a estar esperando el cerrojo, y sigue
+     * bloqueado. Con un solo campo booleano no se puede distinguir «vengo de una
+     * concesion» de «estoy pidiendo», y esa distincion es justo la que rompe el
+     * codigo si se ignora.
+     */
+    public String reacquireLock() {
+        return reacquireLock;
+    }
+
+    public void setReacquireLock(String reacquireLock) {
+        this.reacquireLock = reacquireLock;
+    }
+
+    /** true si el hilo esta bloqueado esperando un cerrojo y no otra cosa. */
     public boolean waitsForLock() {
-        return blockedOn != null;
+        return blockedKind == BlockKind.CERROJO;
+    }
+
+    /** true si espera un recurso de sincronizacion (no una simple espera). */
+    public boolean waitsForResource() {
+        return blockedKind == BlockKind.CERROJO
+                || blockedKind == BlockKind.SEMAFORO
+                || blockedKind == BlockKind.CONDICION;
+    }
+
+    /** Deja al hilo sin bloqueo, para cuando pasa a listo o termina. */
+    public void clearBlock() {
+        this.blockedOn = null;
+        this.blockedKind = BlockKind.NINGUNO;
+        this.reacquireLock = null;
+        this.wakeTick = -1;
     }
 
     public TurnOutcome outcome() {

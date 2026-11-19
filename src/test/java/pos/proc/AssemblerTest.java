@@ -132,4 +132,75 @@ class AssemblerTest {
         // nombre, no por direccion, para que la traza se pueda leer.
         assertThrows(PosFault.class, () -> Assembler.load("malo", "LOCK 3\nEXIT\n"));
     }
+
+    @Test
+    @DisplayName("las instrucciones de semaforo se cargan con nombre y valor")
+    void cargaSemaforos() {
+        Program program = Assembler.load("buffer", """
+                SEM_INIT huecos 2
+                SEM_WAIT huecos
+                SEM_POST huecos
+                EXIT
+                """);
+
+        assertEquals(new Instruction.SemInit("huecos", 2), program.at(0));
+        assertEquals(new Instruction.SemWait("huecos"), program.at(1));
+        assertEquals(new Instruction.SemPost("huecos"), program.at(2));
+    }
+
+    @Test
+    @DisplayName("un semaforo puede nacer cerrado, porque es lo normal")
+    void semaforoAdmiteCero() {
+        Program program = Assembler.load("vacio", "SEM_INIT lleno 0\nEXIT\n");
+
+        assertEquals(new Instruction.SemInit("lleno", 0), program.at(0));
+    }
+
+    @Test
+    @DisplayName("un semaforo con valor negativo no se puede cargar")
+    void semaforoNoAdmiteNegativo() {
+        assertThrows(PosFault.class, () -> Assembler.load("malo", "SEM_INIT lleno -1\nEXIT\n"));
+    }
+
+    @Test
+    @DisplayName("SEM_INIT sin valor inicial se rechaza en vez de suponer cero")
+    void semaforoSinValorNoSeSupone() {
+        PosFault fault = assertThrows(PosFault.class,
+                () -> Assembler.load("malo", "SEM_INIT lleno\nEXIT\n"));
+
+        assertTrue(fault.getMessage().contains("segundo argumento"), fault.getMessage());
+    }
+
+    @Test
+    @DisplayName("COND_WAIT se carga con la condicion y el cerrojo")
+    void cargaCondiciones() {
+        Program program = Assembler.load("monitor", """
+                COND_WAIT hay_datos contador
+                COND_SIGNAL hay_datos
+                COND_BROADCAST hay_datos
+                EXIT
+                """);
+
+        assertEquals(new Instruction.CondWait("hay_datos", "contador"), program.at(0));
+        assertEquals(new Instruction.CondSignal("hay_datos"), program.at(1));
+        assertEquals(new Instruction.CondBroadcast("hay_datos"), program.at(2));
+    }
+
+    @Test
+    @DisplayName("COND_WAIT sin cerrojo se rechaza: una condicion suelta no existe")
+    void condicionNecesitaCerrojo() {
+        PosFault fault = assertThrows(PosFault.class,
+                () -> Assembler.load("malo", "COND_WAIT hay_datos\nEXIT\n"));
+
+        assertTrue(fault.getMessage().contains("segundo argumento"), fault.getMessage());
+    }
+
+    @Test
+    @DisplayName("las instrucciones de un argumento no admiten dos")
+    void instruccionSimpleNoAdmiteDos() {
+        PosFault fault = assertThrows(PosFault.class,
+                () -> Assembler.load("malo", "SEM_WAIT uno dos\nEXIT\n"));
+
+        assertTrue(fault.getMessage().contains("dos argumentos"), fault.getMessage());
+    }
 }

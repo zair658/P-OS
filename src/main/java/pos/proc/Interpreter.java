@@ -24,6 +24,12 @@ import pos.base.PosFault;
  * a la CPU el hilo ya es duenyo y sigue por detras del LOCK. La alternativa,
  * retroceder el pc y reintentar, obligaria a distinguir "vengo de una concesion"
  * de "pido el cerrojo dos veces", y esa distincion no aporta nada al capitulo.
+ *
+ * SEM_WAIT funciona igual que LOCK: el permiso se cobra mientras el hilo duerme.
+ * COND_WAIT no: aqui el hilo si se detiene en la instruccion y al despertar tiene
+ * que volver a pedir el cerrojo, porque lo solto al dormirse. Esa readquisicion
+ * la hace el nucleo antes de devolverle la CPU, no este bucle, y por eso el pc
+ * puede quedarse detras del COND_WAIT sin ningun reintento visible.
  */
 public final class Interpreter {
 
@@ -85,6 +91,32 @@ public final class Interpreter {
                 host.acquireLock(tcb, ins.name()) ? StepResult.CONTINUE : StepResult.BLOCKED;
             case Instruction.Unlock ins -> {
                 host.releaseLock(tcb, ins.name());
+                yield StepResult.CONTINUE;
+            }
+            case Instruction.SemInit ins -> {
+                host.initSemaphore(tcb, ins.name(), ins.initial());
+                yield StepResult.CONTINUE;
+            }
+            case Instruction.SemWait ins ->
+                // Mismo criterio que LOCK: el pc ya apunto a la instruccion
+                // siguiente, y el permiso se completa mientras el hilo duerme.
+                host.waitSemaphore(tcb, ins.name()) ? StepResult.CONTINUE : StepResult.BLOCKED;
+            case Instruction.SemPost ins -> {
+                host.postSemaphore(tcb, ins.name());
+                yield StepResult.CONTINUE;
+            }
+            case Instruction.CondWait ins -> {
+                // Soltar el cerrojo y dormir es un solo paso: lo hace el nucleo
+                // al atender el bloqueo, no una instruccion UNLOCK aparte.
+                host.waitCondition(tcb, ins.condition(), ins.lock());
+                yield StepResult.BLOCKED;
+            }
+            case Instruction.CondSignal ins -> {
+                host.signalCondition(tcb, ins.condition());
+                yield StepResult.CONTINUE;
+            }
+            case Instruction.CondBroadcast ins -> {
+                host.broadcastCondition(tcb, ins.condition());
                 yield StepResult.CONTINUE;
             }
             case Instruction.Yield ignored -> StepResult.YIELDED;

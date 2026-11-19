@@ -398,9 +398,27 @@ Los cerrojos no son reentrantes: pedir uno que ya se tiene es un fallo
 declarado. Los bloqueos son bloqueos de verdad de hilos de Java, autorizados por
 el núcleo dentro de su bucle, de modo que el orden sigue siendo determinista.
 
-**Pendiente**: semáforos contadores, variables de condición asociadas a un
-cerrojo y monitores construidos sobre las dos anteriores. Cada mecanismo tendrá
-su cola de bloqueados y su representación en la interfaz.
+**Implementado en la fase 6**: semáforos contadores
+(`pos.sync.SemaphoreManager`) y variables de condición atadas a un cerrojo
+(`pos.sync.ConditionManager`), con seis instrucciones nuevas (`SEM_INIT`,
+`SEM_WAIT`, `SEM_POST`, `COND_WAIT`, `COND_SIGNAL`, `COND_BROADCAST`). Los tres
+mecanismos comparten la misma cola de espera (`pos.sync.WaitQueue`) y la misma
+regla de cesión directa, por la misma razón que el cerrojo: ceder en el acto es
+lo único que impide que un recién llegado adelante al que lleva más tiempo
+esperando.
+
+El semáforo es un contador con cola; al ceder un permiso no sube el contador,
+porque entre subirlo y despertar cabría un tercero que se colara. La condición
+es solo una cola de dormidos: no guarda la señal, así que el que espera tiene
+que comprobar el estado en un bucle. Dormir en una condición incluye soltar el
+cerrojo en el mismo paso, y despertar obliga a readquirirlo: mientras lo pide
+puede encontrárselo ocupado y volver a dormir. Ese estado —despierto de la
+condición, pendiente del cerrojo— es el único que la fase 6 añade al bloque del
+hilo. Se exige tener el cerrojo para señalar, de modo que el estado que
+justifica la señal esté protegido mientras se comprueba y se anuncia.
+
+Los monitores, por tanto, ya se pueden escribir con lo que hay: un cerrojo y una
+condición por cada estado que se espere. No se añade una pieza aparte para ellos.
 
 ### 10.2 Interbloqueos
 

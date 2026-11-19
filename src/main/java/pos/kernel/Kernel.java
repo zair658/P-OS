@@ -10,6 +10,7 @@ import java.util.Map;
 import pos.base.PosFault;
 import pos.mm.AddressSpace;
 import pos.mm.MemorySetup;
+import pos.proc.BlockKind;
 import pos.proc.ExecutionHost;
 import pos.proc.Interpreter;
 import pos.proc.Pcb;
@@ -20,7 +21,9 @@ import pos.proc.Tcb;
 import pos.proc.TurnOutcome;
 import pos.sched.Scheduler;
 import pos.sched.SchedulingDecision;
+import pos.sync.ConditionManager;
 import pos.sync.LockManager;
+import pos.sync.SemaphoreManager;
 
 /**
  * El nucleo: el unico que decide quien ejecuta.
@@ -53,6 +56,8 @@ public final class Kernel implements ExecutionHost {
     private final List<Tcb> blocked = new ArrayList<>();
 
     private final LockManager locks = new LockManager();
+    private final SemaphoreManager semaphores = new SemaphoreManager();
+    private final ConditionManager conditions = new ConditionManager();
     private final Map<Integer, List<Integer>> dumps = new LinkedHashMap<>();
 
     private long clock;
@@ -163,7 +168,7 @@ public final class Kernel implements ExecutionHost {
             while (true) {
                 admitArrivals();
                 wakeSleepers();
-                wakeLockWaiters();
+                wakeWaiters();
                 if (finished()) {
                     break;
                 }
@@ -213,19 +218,17 @@ public final class Kernel implements ExecutionHost {
             case BLOCKED -> {
                 thread.setState(State.BLOCKED);
                 blocked.add(thread);
-                if (thread.waitsForLock()) {
-                    // Un hilo que espera un cerrojo no tiene hora de despertar:
-                    // lo despertara quien lo libere. Se limpia la marca de
-                    // espera por si venia de un SLEEP anterior, o el barrido de
-                    // dormidos lo despertaria por error.
+                if (thread.waitsForResource()) {
+                    // Quien espera un cerrojo, un permiso o una condicion no
+                    // tiene hora de despertar: lo despertara otro. Se limpia la
+                    // marca de espera por si venia de un SLEEP anterior, o el
+                    // barrido de dormidos lo despertaria por error.
                     thread.setWakeTick(-1);
-                    Tcb owner = locks.ownerOf(thread.blockedOn());
-                    trace.add(clock, EventKind.BLOCK, thread.id(),
-                            "espera el cerrojo '" + thread.blockedOn() + "', en poder de "
-                                    + (owner == null ? "nadie" : owner.id()));
+                    trace.add(clock, EventKind.BLOCK, thread.id(), blockText(thread));
                 } else {
                     long sleep = Math.max(1L, thread.pendingSleep());
                     thread.setWakeTick(clock + sleep);
+                    thread.setBlockedKind(BlockKind.DORMIR);
                     trace.add(clock, EventKind.BLOCK, thread.id(),
                             "duerme " + sleep + " ticks, hasta el " + thread.wakeTick());
                 }
@@ -286,24 +289,79 @@ public final class Kernel implements ExecutionHost {
     }
 
     /**
-     * Despierta a los hilos que heredaron un cerrojo.
+     * Despierta a los hilos que ya tienen lo que esperaban.
      *
-     * La herencia la decidio el hilo que hizo UNLOCK, pero mover el hilo de la
-     * lista de bloqueados a la de listos lo hace el nucleo, aqui, en su propio
-     * turno. Asi la cola de listos solo la toca un sitio y el orden de la
-     * traza sigue siendo el mismo en cada ejecucion.
+     * La concesion la decidio el hilo que libero, señalo o devolvio un permiso,
+     * pero mover el hilo de la lista de bloqueados a la de listos lo hace el
+     * nucleo, aqui, en su propio turno. Asi la cola de listos solo la toca un
+     * sitio y el orden de la traza sigue siendo el mismo en cada ejecucion.
+     *
+     * El unico caso con un paso extra es la condicion. Quien esperaba en una
+     * condicion solto el cerrojo al dormirse, asi que al ser señalado no lo tiene:
+     * aqui se le vuelve a pedir. Si se lo ha llevado otro mientras tanto, el hilo
+     * no vuelve a listos, cambia de motivo de espera y sigue durmiendo en la cola
+     * del cerrojo. Esa es toda la diferencia entre una condicion y un semaforo, y
+     * es lo que hace que el bucle de comprobacion del monitor sea obligatorio.
      */
-    private void wakeLockWaiters() {
-        for (Tcb thread : locks.drainGranted()) {
+    private void wakeWaiters() {
+        List<Tcb> woken = new ArrayList<>();
+        woken.addAll(locks.drainGranted());
+        woken.addAll(semaphores.drainGranted());
+        woken.addAll(conditions.drainGranted());
+
+        for (Tcb thread : woken) {
             String name = thread.blockedOn();
+            BlockKind kind = thread.blockedKind();
+            String lock = thread.reacquireLock();
+            if (lock != null) {
+                thread.setReacquireLock(null);
+                if (!locks.acquire(thread, lock)) {
+                    Tcb owner = locks.ownerOf(lock);
+                    thread.setBlockedKind(BlockKind.CERROJO);
+                    thread.setBlockedOn(lock);
+                    trace.add(clock, EventKind.WAKE, thread.id(),
+                            "despierta de la condicion '" + name + "' pero el cerrojo '" + lock
+                                    + "' esta en poder de "
+                                    + (owner == null ? "nadie" : owner.id())
+                                    + "; vuelve a dormir, ahora por el cerrojo");
+                    continue;
+                }
+                trace.add(clock, EventKind.LOCK, thread.id(),
+                        "readquiere el cerrojo '" + lock + "' antes de seguir");
+            }
             blocked.remove(thread);
-            thread.setBlockedOn(null);
-            thread.setWakeTick(-1);
+            thread.clearBlock();
             thread.setState(State.READY);
             ready.addLast(thread);
-            trace.add(clock, EventKind.WAKE, thread.id(),
-                    "obtiene el cerrojo '" + name + "' y vuelve a listos");
+            trace.add(clock, EventKind.WAKE, thread.id(), wakeText(kind, name));
         }
+    }
+
+    /** Que estaba esperando el hilo, para el mensaje de bloqueo. */
+    private String blockText(Tcb thread) {
+        String name = thread.blockedOn();
+        return switch (thread.blockedKind()) {
+            case CERROJO -> {
+                Tcb owner = locks.ownerOf(name);
+                yield "espera el cerrojo '" + name + "', en poder de "
+                        + (owner == null ? "nadie" : owner.id());
+            }
+            case SEMAFORO -> "espera un permiso de '" + name + "', que esta a cero"
+                    + " y tiene " + semaphores.waitingCount(name) + " hilo(s) en la cola";
+            case CONDICION -> "duerme en la condicion '" + name
+                    + "' y su cerrojo quedo libre";
+            default -> "espera sin motivo conocido";
+        };
+    }
+
+    /** Texto del despertar, segun lo que estuviera esperando. */
+    private String wakeText(BlockKind kind, String name) {
+        return switch (kind) {
+            case CERROJO -> "obtiene el cerrojo '" + name + "' y vuelve a listos";
+            case SEMAFORO -> "obtiene un permiso de '" + name + "' y vuelve a listos";
+            case CONDICION -> "vuelve a listos con el cerrojo de la condicion '" + name + "'";
+            default -> "vuelve a listos";
+        };
     }
 
     private void wakeSleepers() {
@@ -349,9 +407,20 @@ public final class Kernel implements ExecutionHost {
                 if (!orphans.isEmpty()) {
                     trace.add(clock, EventKind.DEADLOCK, "nucleo",
                             "cerrojos que nadie va a liberar: " + String.join(", ", orphans));
-                } else {
+                }
+                // Los semaforos y las condiciones no tienen dueño, asi que el
+                // grafo no puede cerrar un ciclo con ellos. En vez de inventarse
+                // uno, se dice quien espera que: es lo unico que se sabe de
+                // verdad.
+                List<String> stuck = new ArrayList<>();
+                stuck.addAll(semaphores.describeBlocked());
+                stuck.addAll(conditions.describeBlocked());
+                if (stuck.isEmpty()) {
                     trace.add(clock, EventKind.DEADLOCK, "nucleo",
                             "no queda ningun hilo capaz de despertar");
+                } else {
+                    trace.add(clock, EventKind.DEADLOCK, "nucleo",
+                            "nadie puede despertar a: " + String.join("; ", stuck));
                 }
             }
             return false;
@@ -400,13 +469,24 @@ public final class Kernel implements ExecutionHost {
                     // nota empieza por "bloqueado para siempre" porque la columna
                     // de estado ya dice "terminado": el sistema lo cerro, no es
                     // que el hilo hubiera acabado su trabajo.
-                    thread.markFailed(thread.waitsForLock()
-                            ? "bloqueado para siempre esperando el cerrojo '"
-                                    + thread.blockedOn() + "'"
-                            : "seguia pendiente al cerrar el sistema");
+                    thread.markFailed(stuckText(thread));
                 }
             }
         }
+    }
+
+    /** Nota para la tabla de resultados de un hilo que no llego a terminar. */
+    private String stuckText(Tcb thread) {
+        String name = thread.blockedOn();
+        if (name == null) {
+            return "seguia pendiente al cerrar el sistema";
+        }
+        return switch (thread.blockedKind()) {
+            case CERROJO -> "bloqueado para siempre esperando el cerrojo '" + name + "'";
+            case SEMAFORO -> "bloqueado para siempre esperando un permiso de '" + name + "'";
+            case CONDICION -> "bloqueado para siempre esperando la condicion '" + name + "'";
+            default -> "seguia pendiente al cerrar el sistema";
+        };
     }
 
     // ------------------------------------------------------------------
@@ -429,6 +509,7 @@ public final class Kernel implements ExecutionHost {
         // Queda apuntado en la cola del cerrojo y ademas dice por que espera: el
         // bloqueo lo materializa el nucleo al recoger el turno.
         thread.setBlockedOn(name);
+        thread.setBlockedKind(BlockKind.CERROJO);
         Tcb owner = locks.ownerOf(name);
         trace.add(clock, EventKind.LOCK, thread.id(),
                 "no consigue el cerrojo '" + name + "', en poder de "
@@ -442,6 +523,91 @@ public final class Kernel implements ExecutionHost {
         trace.add(clock, EventKind.UNLOCK, thread.id(), next == null
                 ? "libera el cerrojo '" + name + "', queda libre"
                 : "libera el cerrojo '" + name + "' y se lo cede a " + next.id());
+    }
+
+    @Override
+    public void initSemaphore(Tcb thread, String name, int initial) {
+        semaphores.init(thread, name, initial);
+        trace.add(clock, EventKind.SEM_INIT, thread.id(),
+                "crea el semaforo '" + name + "' con " + initial + " permiso(s)");
+    }
+
+    @Override
+    public boolean waitSemaphore(Tcb thread, String name) {
+        boolean taken = semaphores.waitOn(thread, name);
+        if (taken) {
+            trace.add(clock, EventKind.SEM_WAIT, thread.id(),
+                    "toma un permiso de '" + name + "', quedan "
+                            + semaphores.valueOf(name));
+            return true;
+        }
+        thread.setBlockedOn(name);
+        thread.setBlockedKind(BlockKind.SEMAFORO);
+        trace.add(clock, EventKind.SEM_WAIT, thread.id(),
+                "no quedan permisos en '" + name + "', se pone a esperar");
+        return false;
+    }
+
+    @Override
+    public void postSemaphore(Tcb thread, String name) {
+        Tcb next = semaphores.post(thread, name);
+        trace.add(clock, EventKind.SEM_POST, thread.id(), next == null
+                ? "devuelve un permiso a '" + name + "', queda en "
+                        + semaphores.valueOf(name)
+                : "devuelve un permiso a '" + name + "' y se lo cede a " + next.id());
+    }
+
+    @Override
+    public void waitCondition(Tcb thread, String condition, String lock) {
+        // El cerrojo tiene que estar en su poder: soltarlo es parte de dormir, y
+        // si no lo tuviera, el sistema estaria deshaciendo una exclusion mutua
+        // que nunca existio.
+        if (locks.ownerOf(lock) != thread) {
+            throw new PosFault(thread.id() + ": espera en la condicion '" + condition
+                    + "' sin tener el cerrojo '" + lock + "'");
+        }
+        // Primero se apunta en la cola y solo despues se suelta el cerrojo. Al
+        // reves habria un instante en que el hilo ni esta protegido ni va a
+        // enterarse de la señal, y una señal en ese hueco se perderia.
+        conditions.waitOn(thread, condition, lock);
+        thread.setBlockedOn(condition);
+        thread.setBlockedKind(BlockKind.CONDICION);
+        trace.add(clock, EventKind.COND_WAIT, thread.id(),
+                "espera en '" + condition + "' y suelta el cerrojo '" + lock + "'");
+        Tcb heir = locks.release(thread, lock);
+        trace.add(clock, EventKind.UNLOCK, thread.id(), heir == null
+                ? "suelta '" + lock + "' al dormir, queda libre"
+                : "suelta '" + lock + "' al dormir y se lo cede a " + heir.id());
+    }
+
+    @Override
+    public Tcb signalCondition(Tcb thread, String condition) {
+        String lock = conditions.lockOf(condition);
+        if (lock != null && locks.ownerOf(lock) != thread) {
+            throw new PosFault(thread.id() + ": señala la condicion '" + condition
+                    + "' sin tener el cerrojo '" + lock + "'");
+        }
+        Tcb next = conditions.signal(thread, condition);
+        trace.add(clock, EventKind.COND_SIGNAL, thread.id(), next == null
+                ? "señala '" + condition + "', no esperaba nadie (señal perdida)"
+                : "señala '" + condition + "' y despierta a " + next.id());
+        return next;
+    }
+
+    @Override
+    public int broadcastCondition(Tcb thread, String condition) {
+        String lock = conditions.lockOf(condition);
+        if (lock != null && locks.ownerOf(lock) != thread) {
+            throw new PosFault(thread.id() + ": despierta la condicion '" + condition
+                    + "' sin tener el cerrojo '" + lock + "'");
+        }
+        int count = conditions.broadcast(thread, condition);
+        trace.add(clock, EventKind.COND_SIGNAL, thread.id(),
+                "despierta la condicion '" + condition + "'"
+                        + (count == 0
+                                ? ", no esperaba nadie"
+                                : ", despierta a " + count + " hilo(s)"));
+        return count;
     }
 
     /** Un hilo ha reventado: se anota y se deja constancia en su bloque. */
@@ -533,5 +699,15 @@ public final class Kernel implements ExecutionHost {
     /** Tabla de cerrojos del sistema. */
     public LockManager locks() {
         return locks;
+    }
+
+    /** Tabla de semaforos del sistema. */
+    public SemaphoreManager semaphores() {
+        return semaphores;
+    }
+
+    /** Tabla de variables de condicion del sistema. */
+    public ConditionManager conditions() {
+        return conditions;
     }
 }
