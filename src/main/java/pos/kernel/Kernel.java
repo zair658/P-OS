@@ -20,6 +20,7 @@ import pos.proc.Tcb;
 import pos.proc.TurnOutcome;
 import pos.sched.Scheduler;
 import pos.sched.SchedulingDecision;
+import pos.sync.LockManager;
 
 /**
  * El nucleo: el unico que decide quien ejecuta.
@@ -51,9 +52,13 @@ public final class Kernel implements ExecutionHost {
     private final Deque<Tcb> ready = new ArrayDeque<>();
     private final List<Tcb> blocked = new ArrayList<>();
 
+    private final LockManager locks = new LockManager();
+    private final Map<Integer, List<Integer>> dumps = new LinkedHashMap<>();
+
     private long clock;
     private int nextProcessId = 1;
     private boolean started;
+    private boolean keepFinalMemory;
 
     /** Nucleo con esquema contiguo y memoria sobrada para varios procesos. */
     public Kernel(Scheduler scheduler, int memoryUnits) {
@@ -158,6 +163,7 @@ public final class Kernel implements ExecutionHost {
             while (true) {
                 admitArrivals();
                 wakeSleepers();
+                wakeLockWaiters();
                 if (finished()) {
                     break;
                 }
@@ -205,20 +211,41 @@ public final class Kernel implements ExecutionHost {
                 trace.add(clock, EventKind.YIELD, thread.id(), "cedio el turno");
             }
             case BLOCKED -> {
-                long sleep = Math.max(1L, thread.pendingSleep());
-                thread.setWakeTick(clock + sleep);
                 thread.setState(State.BLOCKED);
                 blocked.add(thread);
-                trace.add(clock, EventKind.BLOCK, thread.id(),
-                        "duerme " + sleep + " ticks, hasta el " + thread.wakeTick());
+                if (thread.waitsForLock()) {
+                    // Un hilo que espera un cerrojo no tiene hora de despertar:
+                    // lo despertara quien lo libere. Se limpia la marca de
+                    // espera por si venia de un SLEEP anterior, o el barrido de
+                    // dormidos lo despertaria por error.
+                    thread.setWakeTick(-1);
+                    Tcb owner = locks.ownerOf(thread.blockedOn());
+                    trace.add(clock, EventKind.BLOCK, thread.id(),
+                            "espera el cerrojo '" + thread.blockedOn() + "', en poder de "
+                                    + (owner == null ? "nadie" : owner.id()));
+                } else {
+                    long sleep = Math.max(1L, thread.pendingSleep());
+                    thread.setWakeTick(clock + sleep);
+                    trace.add(clock, EventKind.BLOCK, thread.id(),
+                            "duerme " + sleep + " ticks, hasta el " + thread.wakeTick());
+                }
             }
             case EXITED -> {
                 thread.setState(State.TERMINATED);
                 thread.markFinished(clock);
                 trace.add(clock, EventKind.EXIT, thread.id(),
                         "termina con cpu " + thread.cpuTicks() + " ticks");
-                if (ProcessFactory.closeIfEmpty(thread.process())) {
-                    releaseMemory(thread.process());
+                // Un hilo que se va sin soltar sus cerrojos los deja en poder de
+                // un muerto. Se anota, porque el sintoma que vera el usuario es
+                // que otros hilos se quedan dormidos sin motivo aparente.
+                for (String held : locks.heldBy(thread)) {
+                    trace.add(clock, EventKind.LOCK_ORPHAN, thread.id(),
+                            "termina sin liberar el cerrojo '" + held + "'");
+                }
+                Pcb process = thread.process();
+                if (ProcessFactory.closeIfEmpty(process)) {
+                    captureFinalMemory(process);
+                    releaseMemory(process);
                 }
             }
         }
@@ -258,6 +285,27 @@ public final class Kernel implements ExecutionHost {
         }
     }
 
+    /**
+     * Despierta a los hilos que heredaron un cerrojo.
+     *
+     * La herencia la decidio el hilo que hizo UNLOCK, pero mover el hilo de la
+     * lista de bloqueados a la de listos lo hace el nucleo, aqui, en su propio
+     * turno. Asi la cola de listos solo la toca un sitio y el orden de la
+     * traza sigue siendo el mismo en cada ejecucion.
+     */
+    private void wakeLockWaiters() {
+        for (Tcb thread : locks.drainGranted()) {
+            String name = thread.blockedOn();
+            blocked.remove(thread);
+            thread.setBlockedOn(null);
+            thread.setWakeTick(-1);
+            thread.setState(State.READY);
+            ready.addLast(thread);
+            trace.add(clock, EventKind.WAKE, thread.id(),
+                    "obtiene el cerrojo '" + name + "' y vuelve a listos");
+        }
+    }
+
     private void wakeSleepers() {
         Iterator<Tcb> iterator = blocked.iterator();
         while (iterator.hasNext()) {
@@ -289,8 +337,23 @@ public final class Kernel implements ExecutionHost {
             }
         }
         if (next == Long.MAX_VALUE) {
-            trace.add(clock, EventKind.DEADLOCK, "nucleo",
-                    "no queda ningun hilo capaz de despertar");
+            // Nadie tiene hora de despertar. Puede ser un ciclo de cerrojos o
+            // un cerrojo que se quedo sin duenyo vivo; el grafo de espera dice
+            // cual de las dos cosas es, y con nombres y apellidos.
+            LockManager.Deadlock deadlock = locks.findDeadlock();
+            if (deadlock != null) {
+                trace.add(clock, EventKind.DEADLOCK, "nucleo", deadlock.describe());
+                trace.add(clock, EventKind.DEADLOCK, "nucleo", "anillo: " + deadlock.ring());
+            } else {
+                List<String> orphans = locks.orphanLocks();
+                if (!orphans.isEmpty()) {
+                    trace.add(clock, EventKind.DEADLOCK, "nucleo",
+                            "cerrojos que nadie va a liberar: " + String.join(", ", orphans));
+                } else {
+                    trace.add(clock, EventKind.DEADLOCK, "nucleo",
+                            "no queda ningun hilo capaz de despertar");
+                }
+            }
             return false;
         }
         trace.add(clock, EventKind.IDLE, "nucleo", "sin listos; el reloj salta a " + next);
@@ -331,7 +394,16 @@ public final class Kernel implements ExecutionHost {
             if (thread.state() != State.TERMINATED) {
                 thread.setState(State.TERMINATED);
                 if (thread.failure() == null) {
-                    thread.markFailed("seguia pendiente al cerrar el sistema");
+                    // En la tabla de resultados interesa distinguir "no llego a
+                    // terminar" de "se quedo esperando un cerrojo que nadie iba
+                    // a soltar": son dos averias distintas del mismo sintoma. La
+                    // nota empieza por "bloqueado para siempre" porque la columna
+                    // de estado ya dice "terminado": el sistema lo cerro, no es
+                    // que el hilo hubiera acabado su trabajo.
+                    thread.markFailed(thread.waitsForLock()
+                            ? "bloqueado para siempre esperando el cerrojo '"
+                                    + thread.blockedOn() + "'"
+                            : "seguia pendiente al cerrar el sistema");
                 }
             }
         }
@@ -345,6 +417,31 @@ public final class Kernel implements ExecutionHost {
     public void retireInstruction(Tcb thread) {
         clock++;
         thread.addCpuTick();
+    }
+
+    @Override
+    public boolean acquireLock(Tcb thread, String name) {
+        boolean acquired = locks.acquire(thread, name);
+        if (acquired) {
+            trace.add(clock, EventKind.LOCK, thread.id(), "toma el cerrojo '" + name + "'");
+            return true;
+        }
+        // Queda apuntado en la cola del cerrojo y ademas dice por que espera: el
+        // bloqueo lo materializa el nucleo al recoger el turno.
+        thread.setBlockedOn(name);
+        Tcb owner = locks.ownerOf(name);
+        trace.add(clock, EventKind.LOCK, thread.id(),
+                "no consigue el cerrojo '" + name + "', en poder de "
+                        + (owner == null ? "nadie" : owner.id()));
+        return false;
+    }
+
+    @Override
+    public void releaseLock(Tcb thread, String name) {
+        Tcb next = locks.release(thread, name);
+        trace.add(clock, EventKind.UNLOCK, thread.id(), next == null
+                ? "libera el cerrojo '" + name + "', queda libre"
+                : "libera el cerrojo '" + name + "' y se lo cede a " + next.id());
     }
 
     /** Un hilo ha reventado: se anota y se deja constancia en su bloque. */
@@ -391,5 +488,50 @@ public final class Kernel implements ExecutionHost {
 
     public KernelReport report() {
         return KernelReport.of(clock, scheduler.name(), allThreads, trace.truncated());
+    }
+
+    // ------------------------------------------------------------------
+    // Volcado final de la memoria de un proceso
+    // ------------------------------------------------------------------
+
+    /**
+     * Pide al nucleo que guarde una copia del contenido logico de cada proceso
+     * justo antes de liberar su memoria.
+     *
+     * Esta apagado por defecto. Existe porque al cerrarse un proceso su memoria
+     * fisica se devuelve y se pone a cero, de modo que desde fuera no hay forma
+     * de comprobar en que quedo un calculo compartido; con el volcado se puede
+     * afirmar "el contador acabo en 5" en vez de deducirlo de la traza. El
+     * volcado lee con {@code load}, asi que en un esquema con paginas por
+     * demanda provocaria faltas de pagina: no se activa en esas demostraciones.
+     */
+    public void keepFinalMemory(boolean keep) {
+        this.keepFinalMemory = keep;
+    }
+
+    /** Copia del contenido logico del proceso, o {@code null} si no hubo volcado. */
+    public List<Integer> finalMemory(int processId) {
+        return dumps.get(processId);
+    }
+
+    private void captureFinalMemory(Pcb process) {
+        if (!keepFinalMemory) {
+            return;
+        }
+        AddressSpace space = process.space();
+        if (space == null) {
+            return;
+        }
+        int units = space.logicalUnits();
+        List<Integer> values = new ArrayList<>(units);
+        for (int address = 0; address < units; address++) {
+            values.add(space.load(address));
+        }
+        dumps.put(process.id(), List.copyOf(values));
+    }
+
+    /** Tabla de cerrojos del sistema. */
+    public LockManager locks() {
+        return locks;
     }
 }

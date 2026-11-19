@@ -14,6 +14,8 @@ una terminal que es un proceso más del sistema.
 | 2 | Procesos, hilos, intérprete y planificación FCFS / Round Robin | terminada |
 | 3 | Memoria virtual: contiguo, paginado y segmentado | terminada |
 | 3b | Páginas por demanda, área de intercambio y políticas FIFO / LRU / OPT | terminada |
+| 4 | Sistema de ficheros, imagen por bloques y tres métodos de asignación | terminada |
+| 5 | Cerrojos, exclusión mutua y detección de interbloqueo | terminada |
 
 Las fases restantes están descritas en `docs/arquitectura.md`.
 
@@ -34,6 +36,7 @@ java -jar target/p-os-0.1.0-SNAPSHOT.jar
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --memoria
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --swap
 java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --disco
+java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --concurrencia
 ```
 
 `--memoria` ejecuta la demostración de los tres esquemas de memoria: el mismo
@@ -43,7 +46,10 @@ métodos de asignación sobre el mismo contenido, el mismo hueco pedido por los
 tres y una imagen estropeada que se niega a montar. `--swap` hace lo mismo con
 la paginación por demanda: la misma traza con FIFO, LRU y OPT, la anomalía de
 Belady reproducida, un proceso con más páginas que marcos que recupera sus datos
-del área de intercambio, y el fichero `/intercambio` mirado por dentro. El
+del área de intercambio, y el fichero `/intercambio` mirado por dentro.
+`--concurrencia` hace lo mismo con la sincronización: la carrera entre dos hilos
+que pierde actualizaciones bajo Round Robin, la traza del cerrojo que la arregla
+y un abrazo mortal entre dos hilos que el sistema detecta en vez de colgarse. El
 arranque sin argumentos compara los planificadores.
 
 ## Documentación
@@ -60,8 +66,9 @@ arranque sin argumentos compara los planificadores.
   demanda, el área de intercambio como fichero y la comparación de políticas.
 - `docs/fase-04-disco.md`: qué se implementó en la cuarta, la imagen por bloques,
   los tres métodos de asignación y la verificación al montar.
-- `docs/fase-03b-intercambio.md`: qué añadió la fase 3b, la paginación por
-  demanda, el área de intercambio como fichero y la comparación de políticas.
+- `docs/fase-05-concurrencia.md`: qué añadió la quinta, los cerrojos con cola de
+  espera, la cesión directa, la detección de ciclos y la demostración de la
+  carrera.
 
 ## Convenciones
 

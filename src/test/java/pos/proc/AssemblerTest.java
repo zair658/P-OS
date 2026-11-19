@@ -101,4 +101,35 @@ class AssemblerTest {
     void sleepNecesitaPositivo() {
         assertThrows(PosFault.class, () -> Assembler.load("malo", "SLEEP 0\nEXIT\n"));
     }
+
+    @Test
+    @DisplayName("LOCK y UNLOCK se cargan con el nombre del cerrojo")
+    void cargaCerrojos() {
+        Program program = Assembler.load("critica", """
+                LOCK contador
+                SET 1
+                UNLOCK contador
+                EXIT
+                """);
+
+        assertEquals(new Instruction.Lock("contador"), program.at(0));
+        assertEquals(new Instruction.Unlock("contador"), program.at(2));
+    }
+
+    @Test
+    @DisplayName("un cerrojo sin nombre no se puede cargar")
+    void cerrojoNecesitaNombre() {
+        PosFault fault = assertThrows(PosFault.class,
+                () -> Assembler.load("malo", "LOCK\nEXIT\n"));
+
+        assertTrue(fault.getMessage().contains("cerrojo"), fault.getMessage());
+    }
+
+    @Test
+    @DisplayName("el nombre del cerrojo no puede ser un numero suelto")
+    void cerrojoNoEsUnaDireccion() {
+        // Se distingue a proposito de LOAD y STORE: un cerrojo se identifica por
+        // nombre, no por direccion, para que la traza se pueda leer.
+        assertThrows(PosFault.class, () -> Assembler.load("malo", "LOCK 3\nEXIT\n"));
+    }
 }

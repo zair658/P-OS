@@ -14,6 +14,16 @@ import pos.base.PosFault;
  * Toda condicion imposible (salto fuera del programa, direccion invalida) lanza
  * {@link PosFault}; el hilo que la ejecuta lo captura y devuelve el turno para
  * que el resto del sistema siga funcionando.
+ *
+ * Sobre LOCK: el contador de programa avanza antes de ejecutar, asi que un LOCK
+ * que no consigue el cerrojo deja el pc en la instruccion siguiente. Eso es
+ * correcto porque el interprete no es quien concede: cuando el duenyo libera,
+ * el gestor de cerrojos transfiere la propiedad y solo entonces el nucleo
+ * devuelve el hilo a la cola de listos. Es decir, la adquisicion se completa
+ * mientras el hilo duerme, igual que un SLEEP se completa durmiendo, y al volver
+ * a la CPU el hilo ya es duenyo y sigue por detras del LOCK. La alternativa,
+ * retroceder el pc y reintentar, obligaria a distinguir "vengo de una concesion"
+ * de "pido el cerrojo dos veces", y esa distincion no aporta nada al capitulo.
  */
 public final class Interpreter {
 
@@ -67,6 +77,14 @@ public final class Interpreter {
             }
             case Instruction.Spawn ins -> {
                 host.createThread(process, ins.target(), tcb);
+                yield StepResult.CONTINUE;
+            }
+            case Instruction.Lock ins ->
+                // Si el cerrojo tiene duenyo, el hilo queda en su cola y se pide
+                // el bloqueo: el nucleo lo sacara de la cola de listos.
+                host.acquireLock(tcb, ins.name()) ? StepResult.CONTINUE : StepResult.BLOCKED;
+            case Instruction.Unlock ins -> {
+                host.releaseLock(tcb, ins.name());
                 yield StepResult.CONTINUE;
             }
             case Instruction.Yield ignored -> StepResult.YIELDED;

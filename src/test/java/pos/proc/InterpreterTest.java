@@ -16,6 +16,10 @@ class InterpreterTest {
     /** Nucleo minimo para probar el interprete sin planificador. */
     private static final class Host implements ExecutionHost {
         private final List<Integer> spawns = new ArrayList<>();
+        private final List<String> tomados = new ArrayList<>();
+        private final List<String> soltados = new ArrayList<>();
+        private final List<String> negados = new ArrayList<>();
+        private Tcb duenyo;
         private long clock;
 
         @Override
@@ -27,6 +31,25 @@ class InterpreterTest {
         @Override
         public void createThread(Pcb process, int entryPc, Tcb parent) {
             spawns.add(entryPc);
+        }
+
+        @Override
+        public boolean acquireLock(Tcb thread, String name) {
+            if (duenyo == null) {
+                duenyo = thread;
+                tomados.add(name);
+                return true;
+            }
+            negados.add(name);
+            return false;
+        }
+
+        @Override
+        public void releaseLock(Tcb thread, String name) {
+            if (duenyo == thread) {
+                duenyo = null;
+                soltados.add(name);
+            }
         }
     }
 
@@ -149,6 +172,52 @@ class InterpreterTest {
                 () -> new Interpreter().step(new Host(), hilo(process)));
 
         assertTrue(fault.getMessage().contains("300"), fault.getMessage());
+    }
+
+    @Test
+    @DisplayName("LOCK sobre un cerrojo libre sigue adelante y UNLOCK avisa al nucleo")
+    void cerrojoLibreNoBloquea() {
+        Program program = Assembler.load("critica", """
+                LOCK contador
+                SET 1
+                STORE 0
+                UNLOCK contador
+                EXIT
+                """);
+        Pcb process = proceso(program);
+        Host host = new Host();
+        Tcb thread = hilo(process);
+        Interpreter interpreter = new Interpreter();
+
+        for (int i = 0; i < 4; i++) {
+            assertEquals(StepResult.CONTINUE, interpreter.step(host, thread), "paso " + i);
+        }
+
+        assertEquals(List.of("contador"), host.tomados);
+        assertEquals(List.of("contador"), host.soltados);
+        assertEquals(1, process.load(0));
+    }
+
+    @Test
+    @DisplayName("si el cerrojo esta ocupado el hilo pide bloqueo en vez de colarse")
+    void cerrojoOcupadoPideBloqueo() {
+        Program program = Assembler.load("critica", """
+                LOCK contador
+                SET 1
+                STORE 0
+                EXIT
+                """);
+        Pcb process = proceso(program);
+        Host host = new Host();
+        // Otro hilo se ha quedado con el cerrojo antes.
+        host.duenyo = hilo(process);
+
+        StepResult result = new Interpreter().step(host, hilo(process));
+
+        assertEquals(StepResult.BLOCKED, result);
+        assertEquals(List.of("contador"), host.negados);
+        assertTrue(host.tomados.isEmpty(), "no se queda con nada");
+        assertEquals(0, process.load(0), "y desde luego no entra en la seccion critica");
     }
 
     @Test

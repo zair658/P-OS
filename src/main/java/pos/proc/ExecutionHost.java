@@ -17,4 +17,16 @@ public interface ExecutionHost {
      * instruccion {@code entryPc}.
      */
     void createThread(Pcb process, int entryPc, Tcb parent);
+
+    /**
+     * Intenta tomar un cerrojo en nombre del hilo que ejecuta.
+     *
+     * @return true si el hilo se queda con el cerrojo y puede seguir; false si
+     *         hay otro duenyo, en cuyo caso el hilo ya queda apuntado en la cola
+     *         del cerrojo y el interprete debe pedir el bloqueo
+     */
+    boolean acquireLock(Tcb tcb, String name);
+
+    /** Libera un cerrojo y cede el turno a quien estuviera esperando. */
+    void releaseLock(Tcb tcb, String name);
 }

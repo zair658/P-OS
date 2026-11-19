@@ -28,6 +28,7 @@ public final class Tcb {
     private long wakeTick = -1;
     private long pendingSleep;
     private String failure;
+    private String blockedOn;
     private TurnOutcome outcome = null;
     private Thread carrier;
 
@@ -122,6 +123,28 @@ public final class Tcb {
 
     public void markFailed(String reason) {
         this.failure = reason;
+    }
+
+    /**
+     * Cerrojo por el que el hilo esta esperando, o {@code null} si no espera
+     * ninguno.
+     *
+     * Es el dato que convierte la lista de bloqueados en un grafo de espera: el
+     * hilo dice a que cerrojo espera y el gestor de cerrojos sabe quien lo
+     * tiene. Sin este campo habria que deducir la espera mirando la tabla, y el
+     * detector de interbloqueos tendria que adivinar.
+     */
+    public String blockedOn() {
+        return blockedOn;
+    }
+
+    public void setBlockedOn(String blockedOn) {
+        this.blockedOn = blockedOn;
+    }
+
+    /** true si el hilo esta bloqueado esperando un cerrojo y no una espera. */
+    public boolean waitsForLock() {
+        return blockedOn != null;
     }
 
     public TurnOutcome outcome() {

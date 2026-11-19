@@ -97,6 +97,29 @@ public sealed interface Instruction {
         }
     }
 
+    /**
+     * Toma un cerrojo por su nombre.
+     *
+     * Si esta libre se lo queda y sigue; si lo tiene otro, el hilo queda
+     * bloqueado al final de la cola de ese cerrojo. El nombre es sensible a
+     * mayusculas: 'contador' y 'Contador' son cerrojos distintos, igual que en
+     * un sistema real son objetos distintos.
+     */
+    record Lock(String name) implements Instruction {
+        @Override
+        public String text() {
+            return "LOCK " + name;
+        }
+    }
+
+    /** Libera un cerrojo y se lo cede al primero que lo espera. */
+    record Unlock(String name) implements Instruction {
+        @Override
+        public String text() {
+            return "UNLOCK " + name;
+        }
+    }
+
     /** Entrega el turno voluntariamente, sin bloquearse. */
     record Yield() implements Instruction {
         @Override

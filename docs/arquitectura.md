@@ -380,26 +380,48 @@ y lo dice en el autodiagnóstico. No se repara automáticamente en esta versión
 
 ### 10.1 Mecanismos
 
-Cerrojos con dueño, semáforos contadores, variables de condición asociadas a un
-cerrojo, y monitores construidos sobre las dos anteriores. Cada mecanismo tiene
-su cola de bloqueados y su representación en la interfaz.
+**Implementado en la fase 5**: cerrojos con dueño y cola de espera ordenada por
+llegada (`pos.sync.LockManager`), con dos instrucciones nuevas en el repertorio
+(`LOCK nombre`, `UNLOCK nombre`). El intérprete pide el cerrojo al núcleo; si lo
+consigue sigue, y si no devuelve `BLOCKED` y el núcleo lo saca de la cola de
+listos. El cerrojo no se despierta solo: al liberar, el gestor transfiere la
+propiedad y apunta el heredero, y es el núcleo, al final del turno, quien lo
+devuelve a la cola de listos. La regla de la fase 2 se mantiene intacta: un solo
+sitio toca la cola de listos.
 
-Los bloqueos son bloqueos reales de hilos de Java, pero el desbloqueo lo
-autoriza el núcleo dentro de su bucle, de modo que el orden sigue siendo
-determinista.
+La cesión es directa, no por vuelta a competir. Con vuelta a competir, un hilo
+recién llegado podría adelantar al que lleva más tiempo esperando y dejarlo sin
+entrar nunca; cediendo en el acto el orden de entrada es el orden de la cola. El
+precio es un cambio de contexto que no se puede evitar.
+
+Los cerrojos no son reentrantes: pedir uno que ya se tiene es un fallo
+declarado. Los bloqueos son bloqueos de verdad de hilos de Java, autorizados por
+el núcleo dentro de su bucle, de modo que el orden sigue siendo determinista.
+
+**Pendiente**: semáforos contadores, variables de condición asociadas a un
+cerrojo y monitores construidos sobre las dos anteriores. Cada mecanismo tendrá
+su cola de bloqueados y su representación en la interfaz.
 
 ### 10.2 Interbloqueos
 
-Grafo dirigido con dos tipos de arista: petición y asignación. La detección de
-ciclos se ejecuta a demanda, con un comando, y también automáticamente cuando un
-hilo lleva bloqueado más de un umbral configurable.
+**Implementado en la fase 5**: grafo de espera con una arista por hilo bloqueado
+hacia el dueño del cerrojo que espera. La detección de ciclos se ejecuta cuando
+el sistema se queda sin hilos listos y sin nadie a quien despertar, que es el
+único momento en que el ciclo ya no puede romperse solo; por eso no cuesta nada
+en una ejecución normal. El ciclo se informa con nombres de hilo y de cerrojo, y
+la ejecución termina con informe en vez de colgarse. No se resuelve: no se mata
+ni se hace retroceder a nadie.
 
-Algoritmo del banquero: cada proceso declara sus máximos al crearse. El banquero
-evalúa si un estado es seguro antes de conceder. Su resultado se publica como
-secuencia segura o como negativa con el proceso que la provoca.
+También se denuncian los cerrojos huérfanos, es decir, los que quedan en poder
+de un hilo que terminó sin liberarlos: el síntoma —hilos que no despiertan— no
+distingue por sí solo esa avería de un ciclo.
 
-La demostración preparada es un abrazo mortal entre dos hilos que toman dos
-cerrojos en orden inverso. Debe ser reproducible con un solo comando.
+**Pendiente**: grafo de recursos completo con aristas de petición y asignación
+para todos los recursos, detección a demanda con un comando y por umbral de
+espera, y algoritmo del banquero con declaración de máximos al crear el proceso.
+La demostración preparada —abrazo mortal entre dos hilos que toman dos cerrojos
+en orden inverso— ya existe y es reproducible con un solo comando
+(`--concurrencia`); el banquero necesitará su propia pantalla.
 
 ---
 
@@ -574,6 +596,9 @@ defensa la pregunta será siempre "¿por qué así y no de otra forma?".
 | Gestor propio | BestFit con castigo de migas y dos parámetros ajustables | Castigo proporcional al hueco mayor: se comprobó que no cambia ninguna elección y se retiró; compactación: obliga a reubicar todos los procesos |
 | Planificación | Cuarteto con modo comparación | Solo FCFS y Round Robin: sin sustancia en la tabla; cola multinivel: parámetros difíciles de justificar en el plazo |
 | Sistema de ficheros | Imagen propia con tres métodos | Directorio real del anfitrión: el sistema de ficheros no sería nuestro |
+| Cerrojos | Cesión directa al primero de la cola | Despertar y volver a competir: deja que un recién llegado adelante al que lleva más tiempo esperando, es decir, provoca inanición |
+| Alcance de sincronización | Cerrojos y detección de ciclos | Semáforos, condiciones y monitores: añaden API y un concepto nuevo sin mejorar ninguna demostración; banquero: es prevención y exige declarar máximos antes de ejecutar |
+| Salida del interbloqueo | Detectar, informar y cerrar | Matar un hilo o hacerlo retroceder: sin transacciones no se pueden deshacer las escrituras ya hechas en memoria compartida |
 | Terminal | Con tuberías, redirección y trabajos | Despachador simple: limita las demostraciones y no se siente una terminal |
 | Interfaz | Zonas fijas con vistas y franja de estado | Terminal a pantalla completa con panel oculto: rompe la idea de control desde la terminal |
 | Estado inicial | Carga de ejemplo con reinicio | Sesión restaurada: obliga a serializar todo el sistema |

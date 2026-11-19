@@ -21,6 +21,9 @@ import pos.base.PosFault;
  *   etiqueta:
  *   SET 1
  *   ADD 2
+ *   LOCK contador
+ *   STORE 0
+ *   UNLOCK contador
  *   CMP 10
  *   JZ fin
  *   JMP 0
@@ -108,6 +111,8 @@ public final class Assembler {
             case "JZ" -> new Instruction.JumpIfEqual(target(program, rawLine, argument, labels));
             case "JNZ" -> new Instruction.JumpIfNotEqual(target(program, rawLine, argument, labels));
             case "SPAWN" -> new Instruction.Spawn(target(program, rawLine, argument, labels));
+            case "LOCK" -> new Instruction.Lock(lockName(program, rawLine, argument));
+            case "UNLOCK" -> new Instruction.Unlock(lockName(program, rawLine, argument));
             default -> throw error(program, rawLine, "instruccion desconocida '" + mnemonic + "'");
         };
     }
@@ -134,6 +139,20 @@ public final class Assembler {
         } catch (NumberFormatException e) {
             throw error(program, line, "'" + argument + "' no es un numero entero");
         }
+    }
+
+    /**
+     * Nombre de cerrojo. Se acepta un identificador corriente y se respeta el
+     * uso de mayusculas, porque el nombre es la clave de la tabla de cerrojos.
+     */
+    private static String lockName(String program, String line, String argument) {
+        if (argument == null) {
+            throw error(program, line, "falta el nombre del cerrojo");
+        }
+        if (!argument.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            throw error(program, line, "'" + argument + "' no es un nombre de cerrojo valido");
+        }
+        return argument;
     }
 
     private static int positive(String program, String line, String argument) {
