@@ -12,6 +12,7 @@ import javax.swing.JComponent;
 
 import pos.ui.Snapshot;
 import pos.ui.UiFeed;
+import pos.proc.State;
 
 /**
  * Pintar la interfaz sin pantalla, para dejar constancia de como queda.
@@ -101,7 +102,14 @@ public final class Capture {
         worker.start();
 
         List<File> files = new ArrayList<>();
-        awaitClock(feed, 55, 20_000);
+        // Se espera al instante en que hay un trabajo detenido, no a un reloj
+        // fijo: "detenido" solo existe mientras dura el stop, y es justo lo que
+        // la pestana de procesos tiene que ensenar. Si el escenario cambiara y
+        // ese instante no llegara, se cae al reloj de siempre para no quedarse
+        // sin capturas.
+        if (!awaitStopped(feed, 20_000)) {
+            awaitClock(feed, 55, 20_000);
+        }
 
         // Congelar: la pausa se lee en cada turno, asi que el nucleo se queda
         // quieto en el siguiente y las capturas salen del mismo estado.
@@ -131,6 +139,23 @@ public final class Capture {
             files.add(save(shell, "Memoria", new File(dir, "08-memoria-final.png")));
         }
         return files;
+    }
+
+    /** Espera a una foto con algun proceso detenido, o al agotarse el plazo. */
+    private static boolean awaitStopped(UiFeed feed, long timeoutMillis) {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (System.currentTimeMillis() < deadline) {
+            Snapshot shot = feed.latest();
+            if (shot != null && shot.processes().stream()
+                    .anyMatch(process -> process.state().equals(State.STOPPED.etiqueta()))) {
+                return true;
+            }
+            if (feed.isFinished()) {
+                return false;
+            }
+            sleep(5);
+        }
+        return false;
     }
 
     /** Espera a que el reloj del sistema llegue a un valor, o se agote el plazo. */

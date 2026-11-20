@@ -84,13 +84,50 @@ public final class Snapshotter {
         return soloDetenidos ? "en pausa" : "terminado";
     }
 
+    /**
+     * El estado del proceso, sacado de sus hilos y no del PCB.
+     *
+     * El PCB solo se toca al crearlo y al cerrarlo, asi que un proceso detenido
+     * seguiria diciendo "nuevo" en la tabla: la verdad de lo que hace un proceso
+     * esta en sus hilos, y la tabla tiene que decir la verdad. Se mira por orden
+     * de fuerza: si algo ejecuta, ejecuta; si algo puede ejecutar, esta listo;
+     * si todo espera, espera; y solo si nada de eso pasa y hay algo detenido, el
+     * proceso esta detenido.
+     */
+    private static String stateOf(Pcb process) {
+        if (process.liveThreads() == 0) {
+            return process.state().etiqueta();
+        }
+        boolean bloqueado = false;
+        boolean detenido = false;
+        for (Tcb thread : process.threads()) {
+            switch (thread.state()) {
+                case RUNNING -> {
+                    return State.RUNNING.etiqueta();
+                }
+                case READY -> {
+                    return State.READY.etiqueta();
+                }
+                case BLOCKED -> bloqueado = true;
+                case STOPPED -> detenido = true;
+                default -> {
+                    // Un hilo nuevo no aporta: el proceso lo sera cuando entre.
+                }
+            }
+        }
+        if (bloqueado) {
+            return State.BLOCKED.etiqueta();
+        }
+        return detenido ? State.STOPPED.etiqueta() : State.NEW.etiqueta();
+    }
+
     private static List<Snapshot.Proc> processes(List<Pcb> processes) {
         List<Snapshot.Proc> rows = new ArrayList<>(processes.size());
         for (Pcb process : processes) {
             rows.add(new Snapshot.Proc(
                     process.id(),
                     process.name(),
-                    process.state().etiqueta(),
+                    stateOf(process),
                     process.threads().size(),
                     (int) process.liveThreads(),
                     process.memoryUnits(),
