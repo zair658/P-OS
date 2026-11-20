@@ -685,9 +685,7 @@ las filas que cuenta y las que hay de verdad coinciden.
 
 Límite conocido: el ancho se lee al arrancar y no se vuelve a mirar, así que
 cambiar el tamaño de la ventana a mitad de sesión descuadra el repintado hasta
-que se sale. Se arregla con `SIGWINCH`, que llegará con las señales; para mirarlo
-a ojo está `tools/pantalla.py`, que lanza la sesión en un terminal falso de
-80 columnas y vuelca las filas tal como quedan.
+que se sale. Se arregla con `SIGWINCH`, que llegará con las señales.
 
 Dos límites que conviene tener escritos:
 
