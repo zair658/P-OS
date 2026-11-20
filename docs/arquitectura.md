@@ -44,8 +44,23 @@ comandos que es a su vez un proceso del sistema.
   es lógica, impuesta por el traductor de direcciones del sistema.
 - Usuarios, contraseñas y permisos. Existe una sesión con nombre, sin
   autenticación, que solo etiqueta la traza.
-- Red, sonido y dispositivos externos.
+- Red, sonido y dispositivos externos. Por eso no hay sockets: la comunicación
+  entre procesos se resuelve con tuberías, que sí están implementadas.
 - Drivers de hardware.
+- **Planificación de disco.** No hay FCFS, SSTF, SCAN, C-SCAN ni LOOK. El sistema
+  de ficheros decide qué bloque hace falta, pero no ordena las peticiones
+  pendientes para minimizar el recorrido del cabezal. Faltaría un gestor de cola
+  de peticiones entre el sistema de ficheros y el dispositivo, y aquí no hay
+  dispositivo con latencia que ordenar: la imagen vive en memoria, así que
+  cualquier orden de atención daría las mismas cifras. Se declara en vez de
+  fingir una tabla comparativa sin sentido físico.
+- **Gestores de huecos first-fit y next-fit.** Existen best-fit, worst-fit y un
+  híbrido por puntuación. Los dos que faltan eligen el primer hueco que cabe y
+  el siguiente a la última asignación; son variantes del mismo recorrido y no
+  añaden ningún caso nuevo a la comparación de fragmentación que ya se mide.
+- **Imagen de máquina virtual.** Estaba prevista en F10 y no se hizo. Montarla
+  exige una distribución con su cargador de arranque dentro de la imagen, y el
+  resultado no añade nada al argumento del proyecto. La entrega es el jar.
 
 ---
 
@@ -767,8 +782,14 @@ cerrada y probada. El orden está elegido por dependencias, no por vistosidad.
 | F7 | Terminal, comandos por familias, redirección y tuberías | Guion de comandos completo sin interfaz gráfica (hecho: `--shell`) |
 | F8 | Sincronización, grafo de recursos, banquero | Abrazo mortal provocado y detectado de forma reproducible |
 | F9 | Interfaz gráfica, seis vistas, tabla de resultados | Recorrido completo de la demo sobre la interfaz |
-| F10 | Empaquetado en ejecutable y en imagen de máquina virtual | Arranque a pantalla completa sin escritorio visible |
-| F11 | Demostración preparada y revisión final | Guion de tres minutos ejecutado sin intervención manual |
+| F10 | Empaquetado en un ejecutable único | Un jar que arranca con `java -jar` sin dependencias de ejecución |
+| F11 | Demostración preparada y revisión final | Guion de 5:45 (45 + 60 + 45 + 60 + 45 + 60 + 30) ejecutado sin intervención manual |
+
+La imagen de máquina virtual estaba en el plan de F10 y no se hizo. El motivo
+está en el apartado de lo que queda fuera: montarla exige una distribución con
+su cargador de arranque dentro de la imagen, y eso no añade nada al argumento del
+proyecto, que es que el estado del sistema es real. El ejecutable es la vía de
+entrega y funciona en cualquier equipo con Java 21.
 
 El sistema es usable desde F7, sin interfaz. Ese es el hito que hay que alcanzar
 cuanto antes: a partir de ahí, todo lo demás es mejora, no requisito.
