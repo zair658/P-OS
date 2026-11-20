@@ -465,6 +465,19 @@ class ShellTest {
         }
 
         @Test
+        @DisplayName("si la orden se queja, el & no anade un segundo aviso")
+        void unSoloAviso() {
+            // 'spawn' sin fichero no arranca nada y ya lo dice: el uso correcto.
+            // Anadir encima que el & no vale para esto manda a mirar el sitio
+            // equivocado.
+            Sesion s = sesion("spawn &");
+            String texto = s.texto();
+            assertTrue(texto.contains("spawn: uso:"), () -> "falta el uso:\n" + texto);
+            assertFalse(texto.contains("no arranca ningun proceso"),
+                    () -> "un fallo de uso no necesita el aviso del &:\n" + texto);
+        }
+
+        @Test
         @DisplayName("un trabajo que acaba se anuncia en la linea siguiente")
         void avisaDelQueAcabo() {
             // El programa tarda mas que la linea siguiente: se le da tiempo con

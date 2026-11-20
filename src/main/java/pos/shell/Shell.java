@@ -156,14 +156,19 @@ public final class Shell {
         }
         int tracked = jobs.size();
         background = stage.background();
+        boolean fallo = false;
         try {
             command.run(this, stage.args(), in, out);
         } catch (PosFault fault) {
             out.println(stage.name() + ": " + fault.getMessage());
+            fallo = true;
         } finally {
             background = false;
         }
-        if (stage.background() && jobs.size() == tracked) {
+        // Si la orden ya se quejo, el aviso del & sobra: el problema era otro
+        // (un uso mal escrito, por ejemplo) y decir ademas que el & no aplica
+        // manda a mirar donde no esta el fallo.
+        if (stage.background() && !fallo && jobs.size() == tracked) {
             // Un & sobre algo que no arranca un proceso no tiene a quien
             // aplicarse. Decirlo es mejor que fingir que se hizo algo.
             out.println("&: '" + stage.name()

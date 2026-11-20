@@ -120,7 +120,7 @@ public final class InteractiveShell {
         Pcb proceso = kernel.createHostedProcess("terminal", terminal);
         shell.attach(proceso.threads().get(0));
 
-        out.println("P-OS: sesion de terminal. 'ayuda' lista las ordenes, 'exit' termina.");
+        out.println("P-OS: sesion de terminal. 'help' lista las ordenes, 'exit' termina.");
         if (imagen != null) {
             out.println("imagen: " + imagen.toAbsolutePath());
         }
