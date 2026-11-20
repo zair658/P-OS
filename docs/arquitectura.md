@@ -1,7 +1,7 @@
 # P-OS — Documento de arquitectura
 
-Versión 0.1 — documento de planeación, previo a la escritura de código.
-Estado: pendiente de aprobación.
+Versión 0.8 — documento de arquitectura del sistema construido.
+Estado: las ocho fases implementadas y cubiertas por pruebas.
 
 ---
 

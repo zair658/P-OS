@@ -26,6 +26,7 @@ import javax.swing.ScrollPaneConstants;
 import javax.swing.Scrollable;
 import javax.swing.WindowConstants;
 
+import pos.base.PosVersion;
 import pos.ui.CallsTable;
 import pos.ui.MemoryTable;
 import pos.ui.ProcessTable;
@@ -559,7 +560,9 @@ public final class Shell {
     private final class StatusBar extends JPanel {
 
         private String left = "esperando datos";
-        private String right = "P-OS 0.8 · fase 8 · interfaz";
+        // La version sale de PosVersion para que la ventana no pueda
+        // discrepar de --version ni del prompt de la terminal.
+        private String right = PosVersion.PIE;
 
         StatusBar() {
             setOpaque(true);

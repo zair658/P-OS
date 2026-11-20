@@ -115,14 +115,14 @@ universal, y decirlo así es más defendible que afirmar lo contrario.
 . ~/.local/env-pos.sh      # Java 21 y Maven, sin tocar el sistema
 cd ~/p-os
 mvn test                   # pruebas y tablas comparativas
-mvn package                # genera target/p-os-0.1.0-SNAPSHOT.jar
-java -jar target/p-os-0.1.0-SNAPSHOT.jar
+mvn package                # genera target/p-os-0.8.0-SNAPSHOT.jar
+java -jar target/p-os-0.8.0-SNAPSHOT.jar
 ```
 
 Salida del arranque en esta fase:
 
 ```
-P-OS 0.1
+P-OS 0.8
 
 memoria fisica ....... 4096 unidades
 unidades libres ...... 3968

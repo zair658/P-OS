@@ -155,7 +155,7 @@ los segmentos, y eso es una decisión de diseño del programa, no del sistema.
 Se puede reproducir con:
 
 ```bash
-java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --memoria
+java -cp target/p-os-0.8.0-SNAPSHOT.jar pos.launch.Main --memoria
 ```
 
 ---

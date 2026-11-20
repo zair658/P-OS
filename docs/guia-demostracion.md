@@ -8,7 +8,7 @@ Antes de empezar, preparar el terminal con el jar ya construido:
 
 ```bash
 mvn -q package
-JAR=target/p-os-0.1.0-SNAPSHOT.jar
+JAR=target/p-os-0.8.0-SNAPSHOT.jar
 ```
 
 Si la demo es en un equipo sin pantalla, la ventana se sustituye por las capturas

@@ -21,21 +21,21 @@ para las pruebas.
 
 ```bash
 mvn test                 # 404 pruebas; imprime las tablas comparativas
-mvn package              # genera target/p-os-0.1.0-SNAPSHOT.jar
+mvn package              # genera target/p-os-0.8.0-SNAPSHOT.jar
 ```
 
 El jar se puede lanzar de dos formas, según lo que se quiera ver:
 
 ```bash
-java -jar target/p-os-0.1.0-SNAPSHOT.jar --ui        # la ventana, con el sistema corriendo dentro
-java -jar target/p-os-0.1.0-SNAPSHOT.jar             # informe de texto: memoria y planificadores
+java -jar target/p-os-0.8.0-SNAPSHOT.jar --ui        # la ventana, con el sistema corriendo dentro
+java -jar target/p-os-0.8.0-SNAPSHOT.jar             # informe de texto: memoria y planificadores
 ```
 
 Sin pantalla (servidor, contenedor, CI) la ventana no arranca, pero las vistas se
 pueden generar como imágenes:
 
 ```bash
-java -jar target/p-os-0.1.0-SNAPSHOT.jar --captura capturas
+java -jar target/p-os-0.8.0-SNAPSHOT.jar --captura capturas
 ```
 
 Eso escribe ocho PNG en la carpeta indicada sin necesitar servidor gráfico: los
@@ -79,8 +79,8 @@ devuelve al salir; si el sistema no lo tiene (Windows), la sesión sigue
 funcionando pero leyendo líneas enteras.
 
 ```
-java -jar target/p-os-0.1.0-SNAPSHOT.jar --interactivo
-java -jar target/p-os-0.1.0-SNAPSHOT.jar --interactivo --imagen /tmp/disco.img
+java -jar target/p-os-0.8.0-SNAPSHOT.jar --interactivo
+java -jar target/p-os-0.8.0-SNAPSHOT.jar --interactivo --imagen /tmp/disco.img
 ```
 
 Con `--imagen` el disco vive en un fichero: al salir se guarda y la sesión

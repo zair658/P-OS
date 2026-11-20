@@ -166,8 +166,8 @@ Reproducir:
 ```bash
 . ~/.local/env-pos.sh
 mvn package
-java -jar target/p-os-0.1.0-SNAPSHOT.jar           # la tabla de arriba
-java -jar target/p-os-0.1.0-SNAPSHOT.jar --traza   # y la traza completa
+java -jar target/p-os-0.8.0-SNAPSHOT.jar           # la tabla de arriba
+java -jar target/p-os-0.8.0-SNAPSHOT.jar --traza   # y la traza completa
 ```
 
 ---
