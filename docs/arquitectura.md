@@ -26,7 +26,7 @@ comandos que es a su vez un proceso del sistema.
 - Sistema de ficheros propio sobre imagen única, con tres métodos de asignación.
 - Sincronización con cerrojos, semáforos, variables de condición y monitores.
 - Interbloqueos: grafo de asignación, detección de ciclos y algoritmo del banquero.
-- Interfaz gráfica con seis vistas y tabla de resultados comparativa.
+- Interfaz gráfica con siete vistas y tabla de resultados comparativa.
 - Empaquetado en ejecutable y en imagen de máquina virtual.
 
 ### Fuera del alcance, declarado explícitamente
@@ -731,13 +731,19 @@ Dos límites que conviene tener escritos:
 
 Una ventana. Franja de estado siempre visible, con uso de CPU, ocupación de
 memoria, número de procesos e hilos, planificador activo y reloj del sistema.
-Debajo, panel con seis vistas conmutables: Resumen, Procesos, Reparto, Memoria,
-Sistema y Traza.
+Debajo, panel con siete vistas conmutables: Resumen, Procesos, Reparto, Memoria,
+Sistema, Traza y Terminal.
 
-La ventana es de solo lectura: muestra el estado que publica el núcleo, no acepta
-órdenes. La terminal vive en `--shell`, en otra ejecución; dentro de la ventana no
-hay consola donde escribir. Una vista no interrumpe a otra porque no hay estado
-de escritura que interrumpir: cada vista lee la misma foto (`Snapshot`).
+La ventana enseña el estado que publica el núcleo y no lo toca: cada vista lee la
+misma foto (`Snapshot`), así que una vista no puede interrumpir a otra. La única
+pestaña que escribe es la terminal, y lo hace de la única forma que no rompe esa
+regla: el campo de texto deja la línea en una cola (`SwingKeys`) y se marcha. La
+terminal, en su turno, mira si hay algo; si no lo hay pide dormir varios tics y
+suelta el turno. Si la terminal esperase dentro de su turno a que alguien pulse
+Intro, los demás procesos no avanzarían mientras alguien piensa qué escribir, y
+el sistema entero sería un solo hilo disfrazado. El precio es el retardo de
+sondeo: lo que se tarda en responder a una orden escrita en la ventana es la
+pausa por turno multiplicada por esos tics de espera.
 
 ### 13.2 Registro visual
 
@@ -781,7 +787,7 @@ cerrada y probada. El orden está elegido por dependencias, no por vistosidad.
 | F6 | Núcleo completo, métricas, traza, comparación de algoritmos | Misma carga con cuatro planificadores y tabla correcta |
 | F7 | Terminal, comandos por familias, redirección y tuberías | Guion de comandos completo sin interfaz gráfica (hecho: `--shell`) |
 | F8 | Sincronización, grafo de recursos, banquero | Abrazo mortal provocado y detectado de forma reproducible |
-| F9 | Interfaz gráfica, seis vistas, tabla de resultados | Recorrido completo de la demo sobre la interfaz |
+| F9 | Interfaz gráfica, siete vistas, tabla de resultados | Recorrido completo de la demo sobre la interfaz |
 | F10 | Empaquetado en un ejecutable único | Un jar que arranca con `java -jar` sin dependencias de ejecución |
 | F11 | Demostración preparada y revisión final | Guion de 5:45 (45 + 60 + 45 + 60 + 45 + 60 + 30) ejecutado sin intervención manual |
 

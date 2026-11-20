@@ -12,6 +12,7 @@ import pos.proc.Pcb;
 import pos.sched.RoundRobinScheduler;
 import pos.shell.Console;
 import pos.shell.Keys;
+import pos.shell.Output;
 import pos.shell.Shell;
 import pos.shell.Terminal;
 import pos.ui.UiFeed;
@@ -194,6 +195,23 @@ public final class UiDemo {
      * -- la del arranque -- llegue tambien, y no solo las de despues.
      */
     public static Kernel build(UiFeed feed) {
+        return build(feed, null, null);
+    }
+
+    /**
+     * El escenario, con la terminal que se le pase.
+     *
+     * Sin fuente de entrada la terminal lleva su guion, que es lo que quieren
+     * las capturas y las pruebas: la misma entrada da siempre la misma traza.
+     * Con fuente de entrada -- la caja de texto de la ventana -- la sesion la
+     * escribe quien mira, y entonces la pantalla tiene que ir ensenando lo que
+     * pasa en el momento y repetir la linea escrita, porque nadie lo hace por
+     * ella.
+     *
+     * @param keys de donde llegan las lineas, o {@code null} para el guion
+     * @param screen donde se va ensenando la sesion, o {@code null} para ninguna
+     */
+    public static Kernel build(UiFeed feed, Keys keys, Output screen) {
         Kernel kernel = new Kernel(new RoundRobinScheduler(CUANTO),
                 MemorySetup.paged(FISICAS, LOGICAS, PAGINA));
         kernel.attachFilesystem(imagen());
@@ -209,20 +227,11 @@ public final class UiDemo {
         kernel.createProcess("imprenta-b", Assembler.load("imprenta-b", CON_RECURSOS));
 
         Shell shell = new Shell(kernel.syscalls());
-        // La sesion es larga a proposito: encadena parar, mandar al fondo y
-        // matar para que las tablas ensenen un trabajo detenido durante unos
-        // cuantos tics, y no solo al principio y al final.
-        Terminal terminal = new Terminal(shell, new Console(List.of(
-                new Keys.Keystroke(1, "spawn bucle /bucle.pos &"),
-                new Keys.Keystroke(8, "jobs"),
-                new Keys.Keystroke(16, "stop %1"),
-                new Keys.Keystroke(24, "jobs"),
-                new Keys.Keystroke(32, "ps"),
-                new Keys.Keystroke(40, "bg %1"),
-                new Keys.Keystroke(48, "stop %1"),
-                new Keys.Keystroke(56, "kill %1"),
-                new Keys.Keystroke(64, "clock"),
-                new Keys.Keystroke(72, "exit 0"))), kernel::clock);
+        // Con teclado la sesion la escribe quien mira; sin el, el guion de
+        // siempre. En los dos casos la terminal repite la linea escrita y va
+        // ensenando la respuesta, porque es lo unico que sabe donde se escribe.
+        Terminal terminal = new Terminal(shell, keys == null ? guion() : keys,
+                kernel::clock, screen, true);
         Pcb proceso = kernel.createHostedProcess("terminal", terminal);
         // La sesion tiene que saber en nombre de que hilo llama: sin esto, la
         // primera orden no puede pedir nada al nucleo y el proceso muere.
@@ -247,8 +256,36 @@ public final class UiDemo {
 
     /** Ejecuta el escenario sin ventana y devuelve el kernel ya cerrado. */
     public static Kernel runHeadless(UiFeed feed) {
-        Kernel kernel = build(feed);
+        return runHeadless(feed, null);
+    }
+
+    /**
+     * El escenario entero, con la sesion de la terminal copiada a una pantalla.
+     *
+     * Es lo que permite capturar la pestana de terminal: la sesion la sigue
+     * escribiendo el guion, pero ademas se va pintando donde se mira, igual que
+     * en la ventana.
+     *
+     * @param screen donde copiar la sesion, o {@code null} para no copiarla
+     */
+    public static Kernel runHeadless(UiFeed feed, Output screen) {
+        Kernel kernel = build(feed, screen == null ? null : guion(), screen);
         kernel.run();
         return kernel;
+    }
+
+    /** La sesion de la terminal del escenario, con sus tics. */
+    private static Console guion() {
+        return new Console(List.of(
+                new Keys.Keystroke(1, "spawn bucle /bucle.pos &"),
+                new Keys.Keystroke(8, "jobs"),
+                new Keys.Keystroke(16, "stop %1"),
+                new Keys.Keystroke(24, "jobs"),
+                new Keys.Keystroke(32, "ps"),
+                new Keys.Keystroke(40, "bg %1"),
+                new Keys.Keystroke(48, "stop %1"),
+                new Keys.Keystroke(56, "kill %1"),
+                new Keys.Keystroke(64, "clock"),
+                new Keys.Keystroke(72, "exit 0")));
     }
 }

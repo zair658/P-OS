@@ -52,9 +52,13 @@ import pos.ui.SyncTable;
 public final class Shell {
 
     /** Nombres de las pestanas, en orden. */
-    private static final String[] TABS = {
+    /** Las pestanas de siempre: las vistas que se abren siempre. */
+    private static final String[] BASE_TABS = {
             "Resumen", "Procesos", "Reparto", "Memoria", "Sistema", "Traza"
     };
+
+    /** Nombre de la pestana de terminal, cuando la hay. */
+    private static final String TERMINAL_TAB = "Terminal";
 
     /** Separacion entre dos vistas apiladas. */
     private static final int GAP = 2;
@@ -85,7 +89,16 @@ public final class Shell {
 
     private final CardLayout cards = new CardLayout();
     private final JPanel pages = new JPanel(cards);
-    private final TabBar tabs = new TabBar(TABS);
+    private final TabBar tabs;
+
+    /**
+     * Pestanas que tiene esta ventana.
+     *
+     * No es una constante porque la de terminal solo existe cuando alguien va a
+     * escribir: una captura sin ventana no tiene teclado que ofrecer, y una
+     * pestana que no se puede usar es peor que no tenerla.
+     */
+    private final String[] tabNames;
     private final TopBar top = new TopBar();
     private final StatusBar status = new StatusBar();
 
@@ -104,6 +117,20 @@ public final class Shell {
      * no hay nada que dependa de tener una ventana abierta.
      */
     public Shell() {
+        this(null);
+    }
+
+    /**
+     * Construye el contenido con una terminal dentro, si se pasa una.
+     *
+     * @param terminalPage la pestana de terminal, o {@code null} para no tenerla
+     */
+    public Shell(JComponent terminalPage) {
+        this.tabNames = terminalPage == null
+                ? BASE_TABS.clone()
+                : new String[] { BASE_TABS[0], BASE_TABS[1], BASE_TABS[2], BASE_TABS[3],
+                        BASE_TABS[4], BASE_TABS[5], TERMINAL_TAB };
+        this.tabs = new TabBar(tabNames);
 
         processes = new TablePanel(processModel, new int[] { 46, 116, 110, 62, 62, 70, 70, 112 },
                 new int[] { 0, 3, 4, 5, 6 }, 2);
@@ -123,12 +150,18 @@ public final class Shell {
                 new int[] { 64, 136, 140 }, new int[] { 0 }, -1);
 
         pages.setBackground(Theme.BG);
-        pages.add(pageSummary(), TABS[0]);
-        pages.add(pageProcesses(), TABS[1]);
-        pages.add(pageScheduling(), TABS[2]);
-        pages.add(pageMemory(), TABS[3]);
-        pages.add(pageSystem(), TABS[4]);
-        pages.add(pageTrace(), TABS[5]);
+        pages.add(pageSummary(), tabNames[0]);
+        pages.add(pageProcesses(), tabNames[1]);
+        pages.add(pageScheduling(), tabNames[2]);
+        pages.add(pageMemory(), tabNames[3]);
+        pages.add(pageSystem(), tabNames[4]);
+        pages.add(pageTrace(), tabNames[5]);
+        if (terminalPage != null) {
+            JPanel page = new JPanel(new BorderLayout());
+            page.setBackground(Theme.BG);
+            page.add(terminalPage, BorderLayout.CENTER);
+            pages.add(page, TERMINAL_TAB);
+        }
 
         root.setBackground(Theme.BG);
         JPanel chrome = new JPanel(new BorderLayout());
@@ -377,7 +410,7 @@ public final class Shell {
 
     /** Selecciona una pestana por su nombre, si existe. */
     public void selectTab(String name) {
-        for (String tab : TABS) {
+        for (String tab : tabNames) {
             if (tab.equals(name)) {
                 tabs.select(tab);
                 cards.show(pages, tab);
@@ -388,7 +421,7 @@ public final class Shell {
 
     /** Nombres de las pestanas. */
     public static List<String> tabNames() {
-        return List.of(TABS);
+        return List.of(BASE_TABS);
     }
 
     /**

@@ -10,9 +10,10 @@ desnudo, y eso está declarado como límite en vez de disimulado.
 
 ![Resumen](capturas/07-resumen-final.png)
 
-Las seis vistas de la ventana son la misma foto del sistema mirada desde seis
+Las siete vistas de la ventana son la misma foto del sistema mirada desde siete
 preguntas distintas. Arriba, el resumen: procesador, mapa de la memoria física y
-evolución en el tiempo.
+evolución en el tiempo. La última es una terminal de verdad: se escribe en ella y
+el sistema responde, mientras el escenario sigue corriendo por debajo.
 
 ## Arrancar
 
@@ -20,7 +21,7 @@ Requiere **Java 21** y **Maven**. No hay dependencias de ejecución: solo JUnit
 para las pruebas.
 
 ```bash
-mvn test                 # 416 pruebas; imprime las tablas comparativas
+mvn test                 # 426 pruebas; imprime las tablas comparativas
 mvn package              # genera target/p-os-0.8.0-SNAPSHOT.jar
 ```
 
@@ -38,7 +39,7 @@ pueden generar como imágenes:
 java -jar target/p-os-0.8.0-SNAPSHOT.jar --captura capturas
 ```
 
-Eso escribe ocho PNG en la carpeta indicada sin necesitar servidor gráfico: los
+Eso escribe nueve PNG en la carpeta indicada sin necesitar servidor gráfico: los
 paneles se construyen, se les da tamaño y se pintan sobre una imagen.
 
 ## Las demostraciones
@@ -60,11 +61,20 @@ soluciones al lado, y la conclusión escrita.
 | `--shell` | Una sesión de terminal sobre una imagen de ficheros |
 | `--interactivo` | La misma terminal, pero escribiendo desde el teclado, con historial, tabulador y edición de línea |
 | `--ui` | La ventana del sistema |
+| `--ui --pausa <ms>` | Lo mismo, con otro ritmo entre turnos (por defecto 160 ms; menos es más rápido) |
 | `--captura [carpeta]` | Las mismas vistas en PNG, sin pantalla |
 | `--traza` | Añade la traza completa de la ejecución Round Robin |
 | `--version`, `--help` | Versión y lista de banderas |
 
 ## La terminal
+
+La ventana tiene una pestaña de terminal, y es la única que se escribe: la orden
+que se teclea abajo se ejecuta en el mismo núcleo que alimenta las otras seis
+pestañas, mientras el escenario sigue corriendo. El campo de texto deja la línea
+en una cola y se marcha; la terminal la recoge en su turno. Así nadie piensa
+mientras el sistema espera.
+
+![Terminal](capturas/09-terminal.png)
 
 `--shell` imprime una sesión ya guionizada, no lee del teclado: es una
 demostración más. `--interactivo` es la misma terminal con el teclado de verdad:
@@ -161,9 +171,9 @@ Los paquetes siguen esa separación:
 
 ## Estado
 
-Ocho fases cerradas. El código son unas 21 100 líneas en 121 ficheros, y las
-pruebas 7 500 en 29 ficheros: 66 clases contando las anidadas y 416 casos
-contando los parametrizados.
+Ocho fases cerradas. El código son 21 727 líneas en 124 ficheros, y las pruebas
+7 790 en 30 ficheros (29 con casos y uno de ellos un contrato abstracto): 59
+clases contando las anidadas y 426 casos contando los parametrizados.
 
 | Fase | Contenido | Documento |
 |---|---|---|
@@ -176,7 +186,7 @@ contando los parametrizados.
 | 5 | Cerrojos, exclusión mutua e interbloqueo | [fase-05](docs/fase-05-concurrencia.md) |
 | 6 | Semáforos, condiciones y monitores | [fase-06](docs/fase-06-sincronizacion.md) |
 | 7 | Llamadas al sistema, descriptores y terminal | [fase-07](docs/fase-07-llamadas.md) |
-| 8 | Ventana con seis vistas y capturas sin pantalla | [fase-08](docs/fase-08-interfaz.md) |
+| 8 | Ventana con siete vistas y capturas sin pantalla | [fase-08](docs/fase-08-interfaz.md) |
 
 Los dos planificadores que faltaban para completar la comparación, SJF y
 prioridades, se añadieron al cerrar la fase 8: están descritos en

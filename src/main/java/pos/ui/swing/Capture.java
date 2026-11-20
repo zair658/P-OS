@@ -95,9 +95,13 @@ public final class Capture {
     public static List<File> all(File dir, boolean headlessRun) throws IOException {
         UiFeed feed = new UiFeed();
         feed.setPausePerTurn(headlessRun ? 4L : 0L);
-        Shell shell = new Shell();
+        // La ventana de la captura tambien lleva terminal: la sesion la escribe
+        // el guion, pero se pinta donde se miraria si hubiera alguien.
+        TerminalPanel terminal = new TerminalPanel();
+        Shell shell = new Shell(terminal);
 
-        Thread worker = new Thread(() -> pos.launch.UiDemo.runHeadless(feed), "escenario");
+        Thread worker = new Thread(
+                () -> pos.launch.UiDemo.runHeadless(feed, terminal.screen()), "escenario");
         worker.setDaemon(true);
         worker.start();
 
@@ -137,6 +141,7 @@ public final class Capture {
             shell.show(last);
             files.add(save(shell, "Resumen", new File(dir, "07-resumen-final.png")));
             files.add(save(shell, "Memoria", new File(dir, "08-memoria-final.png")));
+            files.add(save(shell, "Terminal", new File(dir, "09-terminal.png")));
         }
         return files;
     }

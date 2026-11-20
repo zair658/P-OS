@@ -32,17 +32,33 @@ public final class UiLaunch {
     private static final int TICK = 60;
 
     /** Pausa entre turnos del nucleo, para que se vea algo. */
-    private static final long PAUSE = 40L;
+    public static final long PAUSA_POR_DEFECTO = 160L;
 
     private UiLaunch() {
         // Solo el arranque.
     }
 
-    /** Abre la ventana y echa a andar el escenario. */
+    /** Abre la ventana con la pausa de siempre. */
     public static void open() {
+        open(0L);
+    }
+
+    /**
+     * Abre la ventana con una pausa entre turnos.
+     *
+     * La pausa es lo unico que hace visible el reparto: sin ella el escenario se
+     * cierra antes de que la ventana pinte la primera foto. Pero tambien es lo
+     * que se espera al escribir en la terminal, porque la terminal sondea entre
+     * turnos: con pausa cero el sistema corre a toda velocidad y no se ve nada;
+     * con pausa larga se ve muy bien y escribir se hace pesado.
+     *
+     * @param pause milisegundos por turno, o 0 para la de por defecto
+     */
+    public static void open(long pause) {
         UiFeed feed = new UiFeed();
-        feed.setPausePerTurn(PAUSE);
-        Shell shell = new Shell();
+        feed.setPausePerTurn(pause > 0 ? pause : PAUSA_POR_DEFECTO);
+        TerminalPanel terminal = new TerminalPanel();
+        Shell shell = new Shell(terminal);
 
         SwingUtilities.invokeLater(() -> {
             JFrame frame = shell.frame();
@@ -50,7 +66,12 @@ public final class UiLaunch {
             shell.selectTab("Resumen");
         });
 
-        Kernel kernel = UiDemo.build(feed);
+        Kernel kernel = UiDemo.build(feed, terminal.source(), terminal.screen());
+        // El reloj se engancha cuando existe el nucleo: la fuente se creo antes
+        // porque el nucleo la pide al montar la terminal. Mientras no haya
+        // llegado ninguna linea no hace falta, y antes de arrancar el nucleo ya
+        // esta puesto.
+        terminal.source().attachClock(kernel::clock);
         Thread worker = new Thread(() -> {
             try {
                 kernel.run();

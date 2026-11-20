@@ -60,7 +60,7 @@ repetir el aviso solo llenaría la traza de miles de líneas iguales.
 
 ---
 
-## 3. Las seis vistas
+## 3. Las siete vistas
 
 Todas las pestañas leen la misma foto. Una pestaña no consulta al núcleo por su
 cuenta: si lo hiciera, dos pestañas podrían estar enseñando instantes distintos.
@@ -73,6 +73,7 @@ cuenta: si lo hiciera, dos pestañas podrían estar enseñando instantes distint
 | Memoria | El mapa de unidades físicas y la tabla de tramos por proceso |
 | Sistema | Cerrojos, semáforos y condiciones, con dueño y cola de espera |
 | Traza | Los últimos eventos, con reloj y actor |
+| Terminal | Una sesión viva donde se escribe: la orden se ejecuta en el mismo núcleo que alimenta las otras seis |
 
 La pestaña de procesos enseña el estado tal cual lo dice el núcleo, y eso
 incluye **detenido**: un trabajo parado con `stop %n` sigue en la tabla, con su

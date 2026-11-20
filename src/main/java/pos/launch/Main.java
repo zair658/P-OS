@@ -65,7 +65,7 @@ public final class Main {
             return;
         }
         if (flag(args, "--help") || flag(args, "-h")) {
-            System.out.println("uso: p-os [--ui] [--captura [carpeta]] [--traza] [--memoria] [--swap] [--disco] [--concurrencia] [--sincronizacion] [--medicion [--csv]] [--shell] [--interactivo [--imagen fichero]] [--version] [--help]");
+            System.out.println("uso: p-os [--ui [--pausa ms]] [--captura [carpeta]] [--traza] [--memoria] [--swap] [--disco] [--concurrencia] [--sincronizacion] [--medicion [--csv]] [--shell] [--interactivo [--imagen fichero]] [--version] [--help]");
             System.out.println("  sin argumentos  diagnostico de memoria y comparacion de planificadores");
             System.out.println("  --traza         anade la traza completa de la ejecucion Round Robin");
             System.out.println("  --memoria       demostracion de los tres esquemas de memoria");
@@ -78,6 +78,7 @@ public final class Main {
             System.out.println("  --interactivo   la misma terminal, pero escribiendo desde el teclado");
             System.out.println("  --imagen <f>    con --interactivo, guarda el disco en ese fichero y lo reutiliza");
             System.out.println("  --ui            abre la ventana con el sistema corriendo dentro");
+            System.out.println("  --pausa <ms>    con --ui, milisegundos entre turnos (por defecto 160)");
             System.out.println("  --captura [dir] las mismas vistas en PNG, sin pantalla (por defecto capturas/)");
             System.out.println("  --csv           con --medicion, saca las cifras para hoja de calculo");
             return;
@@ -94,7 +95,23 @@ public final class Main {
         // La ventana y las capturas van antes que todo lo demas: no imprimen un
         // informe, abren una vista, y las cabeceras de texto estorbarian.
         if (flag(args, "--ui")) {
-            pos.ui.swing.UiLaunch.open();
+            // La pausa se puede cambiar sin recompilar: en una pantalla pequena
+            // o en una maquina lenta, 160 ms por turno se hacen largos.
+            long pausa = 0L;
+            String texto = valor(args, "--pausa", null);
+            if (texto != null) {
+                try {
+                    pausa = Long.parseLong(texto);
+                } catch (NumberFormatException e) {
+                    System.err.println("--pausa necesita milisegundos, no '" + texto + "'");
+                    System.exit(2);
+                }
+                if (pausa < 0 || pausa > 5000) {
+                    System.err.println("--pausa va de 0 a 5000 ms");
+                    System.exit(2);
+                }
+            }
+            pos.ui.swing.UiLaunch.open(pausa);
             return;
         }
 
