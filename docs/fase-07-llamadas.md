@@ -23,7 +23,7 @@ construye lo que hasta ahora no existía: una terminal.
 | Descriptores | `pos.sys.FdTable` | Ficheros abiertos por proceso: ruta, modo, contenido, posición |
 | Atención | `pos.sys.SystemCalls` | Despacho, tablas por proceso, contadores y coste en tics |
 | Terminal | `pos.shell.Terminal` | La sesión vista como tarea nativa del núcleo |
-| Entrada | `pos.shell.Console`, `Input` | Teclas con su tic, y texto de entrada |
+| Entrada | `pos.shell.Keys`, `Console`, `Input` | De dónde llegan las líneas: guion o teclado, y el texto de entrada |
 | Salida | `pos.shell.Output`, `TextBuffer` | Sumidero de texto; el mismo para pantalla y tubería |
 | Línea | `pos.shell.LineParser` | Etapas, tuberías, redirecciones y comillas |
 | Sesión | `pos.shell.Shell` | Estado de la sesión: directorio, historia, reloj, tablas |
@@ -349,13 +349,18 @@ La suite completa son 280 pruebas y ningún fallo.
   matar a cualquier otro. Sin usuarios, los permisos serían decoración.
 - **Redirección de descriptores.** `2>&1` no existe: `write` va siempre a la
   consola del proceso, no a un descriptor elegido.
-- **Trabajo en segundo plano.** No hay `&` ni trabajos. Una orden se espera
-  entera; el reparto se ve en los tics, no en un `jobs`.
+- **Trabajo en segundo plano.** *(Resuelto después de la fase 7.)* En su momento
+  no había `&` ni trabajos y una orden se esperaba entera. Hoy hay `&`, `jobs`,
+  `bg`, `fg` y `stop`, con los estados de trabajo en `pos.sched.Order` y en la
+  tabla `jobs`.
 - **Comodines y variables.** `*` y `$HOME` no se expanden. El parser separa
   palabras; no interpreta un lenguaje.
-- **Entrada interactiva de verdad.** `Console` recibe líneas con su tic, no
-  teclas de un terminal real. Es lo que hace que las pruebas puedan ser
-  guionizadas y deterministas.
+- **Entrada interactiva de verdad.** *(Resuelto después de la fase 7.)* `Console`
+  sigue recibiendo líneas con su tic, y eso es lo que mantiene las pruebas
+  deterministas; al lado hay ahora `LiveKeys`, que lee del teclado en otro hilo y
+  deja las líneas en una cola para no bloquear el turno de la terminal. Es lo que
+  hay detrás de `--interactivo`. Lo que sigue sin haber es un editor de línea:
+  llegan líneas enteras, así que no hay flechas ni Ctrl-Z.
 
 ---
 
