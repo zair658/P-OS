@@ -144,7 +144,10 @@ final class JobCommands {
         // proceso ya terminado devuelve "0", y entonces no se espera: dormirse
         // por un aviso que ya se dio seria no despertar nunca.
         if ("1".equals(shell.must(new Syscall.WaitProcess(job.pid())))) {
-            out.println(job + ": al primer plano; la terminal espera a que termine");
+            // Se dice el tope al usuario: cuando llegue, el aviso vuelve y el
+            // trabajo sigue vivo, y conviene que no parezca que se ha perdido.
+            out.println(job + ": al primer plano; la terminal espera como mucho "
+                    + Shell.ESPERA_MAXIMA + " ticks");
             shell.requestWait();
         } else {
             out.println(job + ": ya habia terminado");

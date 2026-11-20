@@ -80,11 +80,25 @@ public final class Terminal implements HostedTask {
         this.out = screen == null ? transcript : tee(transcript, screen);
     }
 
-    /** Escribe en dos destinos a la vez: la memoria de la sesion y la pantalla. */
+    /**
+     * Escribe en dos destinos a la vez: la memoria de la sesion y la pantalla.
+     *
+     * El vaciado se reenvia al segundo destino y no al primero: el transcript
+     * vive en memoria y no tiene nada pendiente, pero la pantalla si, y es la
+     * que necesita que el aviso se vea ya.
+     */
     private static Output tee(Output first, Output second) {
-        return chunk -> {
-            first.print(chunk);
-            second.print(chunk);
+        return new Output() {
+            @Override
+            public void print(String text) {
+                first.print(text);
+                second.print(text);
+            }
+
+            @Override
+            public void flush() {
+                second.flush();
+            }
         };
     }
 
@@ -123,6 +137,10 @@ public final class Terminal implements HostedTask {
                 keys.prompt(shell.prompt());
             } else if (livePrompt && !promptShown) {
                 out.print(shell.prompt());
+                // El aviso no lleva salto de linea, y un PrintStream con
+                // autovaciado solo descarga al verlo: sin este flush se queda en
+                // el bufer y sale pegado a la orden siguiente.
+                out.flush();
                 promptShown = true;
             }
             thread.setPendingSleep(due - now);
@@ -144,8 +162,10 @@ public final class Terminal implements HostedTask {
         if (shell.drainWait()) {
             // El hilo ya viene apuntado como esperando a ese proceso desde la
             // llamada al sistema; aqui solo se le dice al planificador que lo
-            // saque de la cola. Sin hora de despertar: lo despertara el fin del
-            // proceso, no el reloj.
+            // saque de la cola. Lo normal es que lo despierte el fin del
+            // proceso, pero se trae tambien un plazo: un programa que no
+            // termina nunca no puede dejar la terminal colgada para siempre.
+            thread.setPendingSleep(Shell.ESPERA_MAXIMA);
             return StepResult.BLOCKED;
         }
 

@@ -413,6 +413,36 @@ public final class Kernel implements ExecutionHost {
      * primero: quien espera a un proceso espera a todos sus hilos, y despertarlo
      * antes seria devolverle el teclado con el programa a medias.
      */
+    /**
+     * Suelta a un hilo que esperaba a un proceso cuando se le acaba el plazo.
+     *
+     * Es la otra mitad del tope de espera de la terminal: {@link #releaseWaiters}
+     * suelta cuando el proceso termina, y esto cuando el que esperaba se cansa.
+     * El proceso que se estaba esperando sigue vivo y no se entera.
+     *
+     * @param thread el que deja de esperar
+     */
+    private void abandonarEspera(Tcb thread) {
+        var iterator = processWaiters.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (entry.getValue().remove(thread)) {
+                // El primer plano que ocupaba este esperador queda libre: si no
+                // se descuenta, el sistema creeria para siempre que hay alguien
+                // delante de la terminal.
+                foreground = Math.max(0, foreground - 1);
+                trace.add(clock, EventKind.WAKE, thread.id(),
+                        "se le acabo la espera de p" + entry.getKey()
+                                + ": vuelve al aviso y el proceso sigue su vida");
+                if (entry.getValue().isEmpty()) {
+                    iterator.remove();
+                }
+                break;
+            }
+        }
+        thread.clearBlock();
+    }
+
     private void releaseWaiters(int pid) {
         List<Tcb> waiters = processWaiters.remove(pid);
         if (waiters == null) {
@@ -612,8 +642,20 @@ public final class Kernel implements ExecutionHost {
                     // tiene hora de despertar: lo despertara otro. Se limpia la
                     // marca de espera por si venia de un SLEEP anterior, o el
                     // barrido de dormidos lo despertaria por error.
-                    thread.setWakeTick(-1);
-                    trace.add(clock, EventKind.BLOCK, thread.id(), blockText(thread));
+                    //
+                    // La excepcion es esperar a un proceso con plazo: la
+                    // terminal no puede quedarse colgada para siempre detras de
+                    // un programa que no termina nunca, asi que quien espera asi
+                    // trae su propio tope en pendingSleep.
+                    long plazo = thread.waitsForProcess() ? thread.pendingSleep() : 0L;
+                    if (plazo > 0L) {
+                        thread.setWakeTick(clock + plazo);
+                        trace.add(clock, EventKind.BLOCK, thread.id(),
+                                blockText(thread) + ", como mucho " + plazo + " ticks");
+                    } else {
+                        thread.setWakeTick(-1);
+                        trace.add(clock, EventKind.BLOCK, thread.id(), blockText(thread));
+                    }
                 } else {
                     long sleep = Math.max(1L, thread.pendingSleep());
                     thread.setWakeTick(clock + sleep);
@@ -814,6 +856,13 @@ public final class Kernel implements ExecutionHost {
             Tcb thread = iterator.next();
             if (thread.wakeTick() >= 0 && thread.wakeTick() <= clock) {
                 iterator.remove();
+                if (thread.waitsForProcess()) {
+                    // Se le acabo el plazo de espera: hay que sacarlo de la
+                    // lista de esperadores. Si se quedara dentro, el fin del
+                    // proceso lo despertaria otra vez y entraria dos veces en la
+                    // cola de listos.
+                    abandonarEspera(thread);
+                }
                 thread.setState(State.READY);
                 ready.addLast(thread);
                 trace.add(clock, EventKind.WAKE, thread.id(), "vuelve a listos");

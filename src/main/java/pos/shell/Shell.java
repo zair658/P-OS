@@ -193,6 +193,20 @@ public final class Shell {
         waitPending = true;
     }
 
+    /**
+     * Tope de espera del primer plano, en ticks.
+     *
+     * Existe porque un trabajo puede no terminar nunca: un bucle sin salida
+     * puesto en primer plano dejaria la terminal muda para siempre, y sin
+     * Ctrl-Z (que es cosa de Unix) no habria forma de recuperarla. Con un tope,
+     * lo peor que pasa es que vuelva el aviso y el trabajo siga a lo suyo, que
+     * es justo lo que se puede arreglar con {@code stop} o {@code kill}.
+     *
+     * Cuatrocientos ticks son de sobra para un programa corto y lo bastante
+     * pocos para que nadie se quede mirando una pantalla quieta.
+     */
+    public static final long ESPERA_MAXIMA = 400L;
+
     /** Si habia una espera pedida y la consume. */
     public boolean drainWait() {
         boolean pending = waitPending;

@@ -49,13 +49,45 @@ class TerminalVivaTest {
                 String.join("\n", lineas).concat("\n").getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Una pantalla de mentira que solo apunta lo que le escriben. */
+    /**
+     * Una pantalla de mentira que solo apunta lo que le escriben.
+     *
+     * Guarda tambien los vaciados y en que orden llegaron: sin eso no se puede
+     * distinguir "escribi el aviso" de "el aviso se llego a ver".
+     */
     private static final class Pantalla implements Output {
         private final StringBuilder texto = new StringBuilder();
+        private final List<String> eventos = new ArrayList<>();
+        private int vaciados;
 
         @Override
         public void print(String chunk) {
             texto.append(chunk);
+            eventos.add(chunk);
+        }
+
+        @Override
+        public void flush() {
+            vaciados++;
+            eventos.add(VACIADO);
+        }
+
+        int vaciados() {
+            return vaciados;
+        }
+
+        /** Lo que se escribio en el evento i, o null si no hay tal. */
+        String evento(int i) {
+            return i >= 0 && i < eventos.size() ? eventos.get(i) : null;
+        }
+
+        int primeroCon(String trozo) {
+            for (int i = 0; i < eventos.size(); i++) {
+                if (eventos.get(i).contains(trozo)) {
+                    return i;
+                }
+            }
+            return -1;
         }
 
         @Override
@@ -63,6 +95,9 @@ class TerminalVivaTest {
             return texto.toString();
         }
     }
+
+    /** Marca que deja un vaciado en la lista de eventos. */
+    private static final String VACIADO = "\u0000vaciado";
 
     private static FileSystem imagen() {
         FileSystem fs = FileSystem.format(FsLayout.standard(BLOQUES, BLOQUE),
@@ -274,6 +309,20 @@ class TerminalVivaTest {
             // Uno por linea como mucho: si se pintara en cada vuelta del sondeo
             // habria decenas y la pantalla seria ilegible.
             assertTrue(avisos <= 4, "el aviso se repite demasiado: " + avisos + " en " + texto);
+        }
+
+        @Test
+        @DisplayName("el aviso se vacia al pintarlo, para que se vea antes de escribir")
+        void avisoVaciado() throws InterruptedException {
+            Pantalla pantalla = new Pantalla();
+            sesionCon(new Tarda(new AtomicLong(0)::get, "pwd"), pantalla, false);
+            // El aviso no lleva salto de linea: sin vaciado se queda en el
+            // buffer y quien escribe no lo ve hasta que llega la respuesta.
+            int aviso = pantalla.primeroCon("pos:/>");
+            assertTrue(aviso >= 0, () -> "no se pinto el aviso: " + pantalla);
+            assertEquals(VACIADO, pantalla.evento(aviso + 1),
+                    () -> "el aviso tiene que vaciarse en cuanto se escribe: " + pantalla.eventos);
+            assertTrue(pantalla.vaciados() >= 1, "tiene que haber al menos un vaciado");
         }
 
         @Test

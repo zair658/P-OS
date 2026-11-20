@@ -432,15 +432,36 @@ class ShellTest {
         @DisplayName("fg trae el trabajo al frente y la terminal espera a que acabe")
         void fgEspera() {
             Sesion s = sesion("spawn largo /largo.pos &", "fg %1", "echo fin");
-            s.debeContener("al primer plano; la terminal espera a que termine");
+            s.debeContener("al primer plano; la terminal espera como mucho "
+                    + Shell.ESPERA_MAXIMA + " ticks");
             String texto = s.texto();
-            int espera = texto.indexOf("espera a que termine");
+            int espera = texto.indexOf("espera como mucho");
+            assertTrue(espera >= 0, () -> "fg tiene que avisar de la espera:\n" + texto);
             int acaba = texto.indexOf("largo (primer plano): terminado");
             int vuelta = texto.lastIndexOf("\nfin");
             assertTrue(acaba > espera,
                     () -> "el trabajo tiene que terminar despues de la espera:\n" + texto);
             assertTrue(vuelta > acaba,
                     () -> "la terminal solo vuelve al teclado cuando el trabajo acaba:\n" + texto);
+        }
+
+        @Test
+        @DisplayName("fg sobre un trabajo que no termina nunca devuelve el aviso")
+        void fgConTope() {
+            // 'bucle' no sale nunca de su bucle. Sin tope, la terminal se
+            // quedaria esperando para siempre y ni 'kill' ni 'exit' llegarian a
+            // ejecutarse: la sesion se colgaria.
+            Sesion s = sesion("spawn bucle /bucle.pos &", "fg %1", "jobs", "kill %1", "exit");
+            s.debeContener("al primer plano; la terminal espera como mucho "
+                    + Shell.ESPERA_MAXIMA + " ticks");
+            // El aviso volvio, asi que la linea siguiente se ejecuto y el
+            // trabajo seguia vivo: se ve en la tabla.
+            s.debeTenerLinea("  [1]   p2   listo   primero  bucle");
+            // Y el nucleo dejo constancia de que la espera se agoto, no de que
+            // el proceso hubiera terminado.
+            String traza = String.join("\n", s.kernel().trace().lines());
+            assertTrue(traza.contains("se le acabo la espera de p2"),
+                    () -> "la traza tiene que decir que la espera se agoto:\n" + traza);
         }
 
         @Test

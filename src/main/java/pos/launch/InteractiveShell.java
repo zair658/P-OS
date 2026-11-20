@@ -110,8 +110,10 @@ public final class InteractiveShell {
         Keys keys = System.console() == null ? null
                 : TtyKeys.conTerminalCrudo(System.in, out, kernel::clock,
                         shell.history(), nombres(shell), senal(kernel));
+        boolean lineaPorLinea = false;
         if (keys == null) {
             keys = new LiveKeys(System.in, kernel::clock);
+            lineaPorLinea = true;
         }
         Terminal terminal = new Terminal(shell, keys, kernel::clock, salida(out), false);
 
@@ -121,6 +123,16 @@ public final class InteractiveShell {
         out.println("P-OS: sesion de terminal. 'ayuda' lista las ordenes, 'exit' termina.");
         if (imagen != null) {
             out.println("imagen: " + imagen.toAbsolutePath());
+        }
+        if (lineaPorLinea) {
+            // Sin modo crudo no se puede leer tecla a tecla: ni flechas, ni
+            // tabulador, ni Ctrl-Z. Conviene decirlo, o parecera que la
+            // terminal esta rota cuando lo que pasa es que este sistema no deja
+            // poner la consola en crudo. El resto de la sesion funciona igual, y
+            // el job control tambien, pero por orden escrita (stop, bg, fg).
+            out.println("aviso: esta consola no admite modo crudo (hace falta stty);");
+            out.println("       se lee linea a linea: sin flechas, sin tabulador y sin Ctrl-Z.");
+            out.println("       el control de trabajos se hace por orden: stop, bg, fg, kill.");
         }
         out.println();
 
@@ -134,9 +146,25 @@ public final class InteractiveShell {
         guardarImagen(imagen, fs);
     }
 
-    /** La salida de las ordenes va tal cual a la pantalla. */
+    /**
+     * La salida de las ordenes va tal cual a la pantalla.
+     *
+     * Se vacia en cada escritura porque detras hay una consola que el usuario
+     * esta mirando: lo que se escribe es lo que tiene que ver, sin esperar a que
+     * la linea siguiente traiga su salto.
+     */
     private static Output salida(PrintStream out) {
-        return out::print;
+        return new Output() {
+            @Override
+            public void print(String text) {
+                out.print(text);
+            }
+
+            @Override
+            public void flush() {
+                out.flush();
+            }
+        };
     }
 
     /**
