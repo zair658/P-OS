@@ -17,7 +17,7 @@ comandos que es a su vez un proceso del sistema.
 ### Dentro del alcance
 
 - Núcleo con estado propio, independiente de la interfaz y ejecutable sin ventana.
-- Terminal con argumentos, redirección, tuberías, historial y autocompletado.
+- Terminal con argumentos, redirección, tuberías e historial.
 - Procesos con PCB, hilos reales dentro del proceso y ejecución verificable.
 - Cuatro planificadores y modo de comparación sobre una misma carga.
 - Memoria real por bloques con traducción de direcciones comprobable.
@@ -26,7 +26,7 @@ comandos que es a su vez un proceso del sistema.
 - Sistema de ficheros propio sobre imagen única, con tres métodos de asignación.
 - Sincronización con cerrojos, semáforos, variables de condición y monitores.
 - Interbloqueos: grafo de asignación, detección de ciclos y algoritmo del banquero.
-- Interfaz gráfica con cinco vistas y tabla de resultados comparativa.
+- Interfaz gráfica con seis vistas y tabla de resultados comparativa.
 - Empaquetado en ejecutable y en imagen de máquina virtual.
 
 ### Fuera del alcance, declarado explícitamente
@@ -50,8 +50,8 @@ Estos seis principios deciden casi todas las discusiones de diseño que vendrán
 Cuando haya duda, se resuelve mirando aquí.
 
 **P1. El núcleo no conoce la interfaz.** El paquete del núcleo no importa nada de
-JavaFX. Si algún día aparece una importación de JavaFX fuera del paquete de
-interfaz, es un error de arquitectura, no un atajo.
+Swing (`javax.swing`, `java.awt`). Si algún día aparece una importación de Swing
+fuera del paquete de interfaz, es un error de arquitectura, no un atajo.
 
 **P2. La interfaz no calcula.** No traduce direcciones, no elige huecos, no
 ordena colas, no decide estados. Solo lee el estado que publica el núcleo y
@@ -135,7 +135,7 @@ De dentro hacia fuera. Cada capa solo puede depender de las anteriores.
 | 8. Interfaz | `pos.ui` | Vistas, modelos observables, estilos |
 | 9. Arranque | `pos.launch` | Modo consola, modo gráfico, autodiagnóstico |
 
-La capa 8 es la única que importa JavaFX. La capa 9 es la única que decide qué
+La capa 8 es la única que importa Swing. La capa 9 es la única que decide qué
 interfaz se levanta.
 
 ---
@@ -493,8 +493,9 @@ con la entrada de la siguiente.
 Operadores: `>` escribe, `>>` añade, `<` lee, `|` encadena. Un fallo en una
 etapa detiene la cadena e informa con código de salida distinto de cero.
 
-Historial navegable y autocompletado sobre nombres de comando y rutas del
-sistema de ficheros propio.
+Historial de lo escrito, consultable con la orden `history`. No se navega con
+flechas ni hay autocompletado: la entrada es un guion, no un teclado (apartado
+12.4).
 
 ### 12.2 Familias de comandos
 
@@ -601,11 +602,13 @@ Decisiones que conviene tener escritas, porque son límites y no olvidos:
 
 Una ventana. Franja de estado siempre visible, con uso de CPU, ocupación de
 memoria, número de procesos e hilos, planificador activo y reloj del sistema.
-Debajo, terminal y panel con cinco vistas conmutables: Procesos, Memoria,
-Planificación, Ficheros, y Sincronización e interbloqueo.
+Debajo, panel con seis vistas conmutables: Resumen, Procesos, Reparto, Memoria,
+Sistema y Traza.
 
-Regla de navegación: cambiar de vista nunca interrumpe la escritura en la
-terminal ni mueve el cursor.
+La ventana es de solo lectura: muestra el estado que publica el núcleo, no acepta
+órdenes. La terminal vive en `--shell`, en otra ejecución; dentro de la ventana no
+hay consola donde escribir. Una vista no interrumpe a otra porque no hay estado
+de escritura que interrumpir: cada vista lee la misma foto (`Snapshot`).
 
 ### 13.2 Registro visual
 
@@ -649,7 +652,7 @@ cerrada y probada. El orden está elegido por dependencias, no por vistosidad.
 | F6 | Núcleo completo, métricas, traza, comparación de algoritmos | Misma carga con cuatro planificadores y tabla correcta |
 | F7 | Terminal, comandos por familias, redirección y tuberías | Guion de comandos completo sin interfaz gráfica (hecho: `--shell`) |
 | F8 | Sincronización, grafo de recursos, banquero | Abrazo mortal provocado y detectado de forma reproducible |
-| F9 | Interfaz gráfica, cinco vistas, tabla de resultados | Recorrido completo de la demo sobre la interfaz |
+| F9 | Interfaz gráfica, seis vistas, tabla de resultados | Recorrido completo de la demo sobre la interfaz |
 | F10 | Empaquetado en ejecutable y en imagen de máquina virtual | Arranque a pantalla completa sin escritorio visible |
 | F11 | Demostración preparada y revisión final | Guion de tres minutos ejecutado sin intervención manual |
 

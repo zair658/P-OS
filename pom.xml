@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  P-OS: construccion del nucleo.
-  La interfaz grafica se anadira como dependencia aparte en su fase, para que el
-  nucleo se pueda compilar y ejecutar sin JavaFX y sin pantalla.
+  P-OS: construccion del nucleo y de la interfaz.
+  La interfaz usa Swing, que viene en el JDK, asi que no hay dependencia extra
+  que declarar. El nucleo se puede compilar y ejecutar sin pantalla.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
