@@ -165,14 +165,19 @@ los documentos.
 - **Sincronización:** `--sincronizacion` con el productor y el consumidor que se
   dan el turno sin gastar procesador, y el monitor donde se ve que el despertado
   tiene que volver a pedir el cerrojo.
-- **Sin pantalla:** `--captura carpeta` genera las ocho vistas como PNG.
+- **Sin pantalla:** `--captura carpeta` genera las vistas como PNG. Salen ocho
+  ficheros: las seis pestañas más dos tomas de estado final (el resumen y el mapa
+  de memoria al terminar la carga).
 
 ## Las preguntas que van a caer
 
-**¿Es un sistema operativo de verdad?** No, y el nombre lo dice: es didáctico. Lo
-que sí es real es el estado: memoria por bloques, procesos con su bloque de
-control, hilos sobre hilos de la JVM, ficheros en una imagen propia. Lo que no
-hay es hardware debajo.
+**¿Es un sistema operativo de verdad?** Sí, con una frontera declarada: arranca en
+una máquina virtual, no en un procesador. Debajo no hay hardware, y eso está
+escrito en la arquitectura sin adornos. Ahora bien, que la máquina sea virtual no
+lo convierte en un simulador: no modela el estado para dibujarlo, lo ejecuta. Los
+procesos son hilos reales de la JVM, la memoria son bloques reales, el sistema de
+ficheros escribe bytes reales en una imagen. Lo único que no es de relojería es
+el tiempo, que avanza por ticks para que las medidas salgan iguales.
 
 **¿Por qué Java?** Porque el objetivo es ver los mecanismos, y la JVM da hilos de
 verdad, concurrencia de verdad y recolección de basura que no estorba. El precio
