@@ -122,6 +122,26 @@ de llamadas al sistema con su coste en tics.
 > memoria puesta. Eso es lo que hace `stop` en el núcleo: sacarlo de la cola, no
 > matarlo.»
 
+### Si preguntan si se puede escribir de verdad
+
+Se puede, y conviene tenerlo a mano porque es la pregunta natural después de ver
+una sesión guionizada:
+
+```bash
+java -jar $JAR --interactivo
+```
+
+Es la misma terminal leyendo del teclado. Escribir `spawn bucle /bucle.pos &`,
+luego `ps` y luego `kill %1` delante de quien pregunte; el bucle aparece, avanza
+y muere con la orden. Con `--imagen fichero.img` el disco se guarda al salir y la
+sesión siguiente encuentra un fichero creado en la anterior.
+
+Lo que hay detrás, si interesa el detalle: el teclado se lee en otro hilo y las
+líneas se dejan en una cola; la terminal, en su turno, mira si hay algo y si no
+pide dormir dos tics y suelta el turno. Si se quedara parada en el `readLine`
+dentro de su turno, ningún otro proceso correría mientras alguien piensa qué
+escribir, y el reparto de procesador que se acaba de enseñar sería mentira.
+
 ## 7. Cierre (30 s)
 
 ```bash
@@ -160,9 +180,10 @@ es que no hay control de memoria física directa, y se asume.
 
 **¿Cómo se para un proceso sin señales?** Con una orden explícita, `stop`, que
 es una llamada al sistema. Un terminal de verdad para con Ctrl-Z porque hay
-señales; aquí la entrada es un guion, así que la orden hace de señal. `fg` espera
-al proceso en vez de recibir un aviso asíncrono: por eso no hacen falta
-manejadores.
+señales; aquí la entrada llega en líneas enteras, no en pulsaciones sueltas, así
+que la orden hace de señal. `fg` espera al proceso en vez de recibir un aviso
+asíncrono: por eso no hacen falta manejadores. Esto vale igual en `--shell` y en
+`--interactivo`: un Ctrl-Z es una tecla, no una línea.
 
 **¿Qué se descartó?** Está escrito en `docs/arquitectura.md`, con el motivo. El
 caso que más se pregunta es el gestor de huecos propio: el castigo proporcional

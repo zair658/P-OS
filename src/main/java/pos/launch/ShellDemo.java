@@ -13,6 +13,7 @@ import pos.proc.Assembler;
 import pos.proc.Pcb;
 import pos.sched.RoundRobinScheduler;
 import pos.shell.Console;
+import pos.shell.Keys;
 import pos.shell.Shell;
 import pos.shell.Terminal;
 
@@ -45,8 +46,8 @@ public final class ShellDemo {
     private static final int CUANTO = 6;
 
     /** Imagen de ficheros: bloques de 128 bytes, suficientes para la sesion. */
-    private static final int BLOQUES = 256;
-    private static final int BLOQUE = 128;
+    static final int BLOQUES = 256;
+    static final int BLOQUE = 128;
 
     /**
      * Programa que se arranca desde la terminal con spawn.
@@ -201,11 +202,11 @@ public final class ShellDemo {
         // bloquea y los contadores avanzan. Si la terminal tuviera un turno
         // preferente, el hueco no existiria.
         Terminal terminal = terminal(kernel, new Console(List.of(
-                new Console.Keystroke(1, "ps"),
-                new Console.Keystroke(30, "kill 3"),
-                new Console.Keystroke(50, "clock"),
-                new Console.Keystroke(70, "ps"),
-                new Console.Keystroke(90, "exit 0"))));
+                new Keys.Keystroke(1, "ps"),
+                new Keys.Keystroke(30, "kill 3"),
+                new Keys.Keystroke(50, "clock"),
+                new Keys.Keystroke(70, "ps"),
+                new Keys.Keystroke(90, "exit 0"))));
         Pcb proceso = kernel.createHostedProcess("terminal", terminal);
         terminal.shell().attach(proceso.threads().get(0));
 
@@ -268,7 +269,7 @@ public final class ShellDemo {
      * tamanos distintos y no interesa que la fragmentacion decida el resultado de
      * la demostracion: eso ya se demostro en la fase 4.
      */
-    private static FileSystem imagen() {
+    static FileSystem imagen() {
         FileSystem fs = FileSystem.format(FsLayout.standard(BLOQUES, BLOQUE),
                 new AllocationMethod.Indexed(), new pos.alloc.BestFit());
         fs.create("/leeme.txt", """

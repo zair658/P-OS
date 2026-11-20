@@ -1,0 +1,210 @@
+package pos.launch;
+
+import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import pos.alloc.BestFit;
+import pos.fs.FileSystem;
+import pos.kernel.Kernel;
+import pos.kernel.KernelObserver;
+import pos.mm.MemorySetup;
+import pos.proc.Pcb;
+import pos.proc.State;
+import pos.sched.RoundRobinScheduler;
+import pos.shell.LiveKeys;
+import pos.shell.Output;
+import pos.shell.Shell;
+import pos.shell.Terminal;
+
+/**
+ * Una sesion de terminal con teclado de verdad.
+ *
+ * El resto de modos del programa son demostraciones: llevan un guion escrito y
+ * lo ejecutan hasta el final. Esto es lo mismo pero sin guion: alguien escribe,
+ * el sistema contesta, y el estado del sistema de ficheros sobrevive entre
+ * sesiones si se le da un fichero de imagen.
+ *
+ * La dificultad no esta en leer del teclado, esta en no romper la simulacion. Un
+ * sistema con reloj simulado no puede quedarse esperando a una persona dentro de
+ * un turno de procesador, porque entonces no hay turnos: mientras alguien piensa
+ * que escribir, no corre nadie. Por eso la lectura vive en otro hilo
+ * ({@link LiveKeys}) y la terminal solo mira si ha llegado algo, durmiendo unos
+ * tics entre mirada y mirada.
+ *
+ * El ritmo tambien es cosa de quien mira: el nucleo corre tan rapido como puede y
+ * es este modo el que se toma unos milisegundos entre turno y turno para que la
+ * simulacion no se coma la sesion en un parpadeo. Si se quita el freno, el
+ * sistema sigue siendo correcto; simplemente deja de ser legible.
+ */
+public final class InteractiveShell {
+
+    /** Tics de procesador por turno. */
+    private static final int CUANTO = 4;
+
+    /** Unidades de memoria fisica. */
+    private static final int FISICAS = 4096;
+
+    /**
+     * Unidades de memoria logica por proceso.
+     *
+     * No es capricho que sea mucho menor que la fisica: cada proceso recibe su
+     * espacio logico completo al nacer, asi que un valor del tamano de la
+     * memoria fisica dejaria el sistema sin sitio para un segundo proceso y no
+     * se podria arrancar nada. Con 256 caben varios.
+     */
+    private static final int LOGICAS = 256;
+
+    /** Unidades por pagina. */
+    private static final int PAGINA = 16;
+
+    /**
+     * Bytes por bloque de la imagen guardada.
+     *
+     * Es el mismo que usa la imagen de ejemplo, y tiene que serlo: una imagen
+     * montada con otro tamano de bloque no se puede leer.
+     */
+    private static final int BLOQUE = ShellDemo.BLOQUE;
+
+    /** Milisegundos entre turno y turno: el freno que hace la sesion legible. */
+    private static final long FRENO = 3;
+
+    private InteractiveShell() {
+    }
+
+    /**
+     * Arranca la sesion.
+     *
+     * @param imagen fichero donde vive el sistema de ficheros; si no existe se
+     *     crea con lo justo, y al salir se guarda. {@code null} para una sesion
+     *     en memoria que no deja rastro
+     */
+    public static void run(Path imagen) {
+        PrintStream out = new PrintStream(System.out, true, java.nio.charset.StandardCharsets.UTF_8);
+
+        FileSystem fs = abrirImagen(imagen);
+        Kernel kernel = new Kernel(new RoundRobinScheduler(CUANTO),
+                MemorySetup.paged(FISICAS, LOGICAS, PAGINA));
+        kernel.attachFilesystem(fs);
+
+        Shell shell = new Shell(kernel.syscalls());
+        // Sin supplier de aviso: el aviso lo pinta la terminal cuando se queda
+        // esperando, que es cuando de verdad toca. Si lo pintara el hilo que lee
+        // saldria antes que la respuesta del comando anterior.
+        LiveKeys keys = new LiveKeys(System.in, kernel::clock);
+        Terminal terminal = new Terminal(shell, keys, kernel::clock, salida(out), false);
+
+        Pcb proceso = kernel.createHostedProcess("terminal", terminal);
+        shell.attach(proceso.threads().get(0));
+
+        out.println("P-OS: sesion de terminal. 'ayuda' lista las ordenes, 'exit' termina.");
+        if (imagen != null) {
+            out.println("imagen: " + imagen.toAbsolutePath());
+        }
+        out.println();
+
+        kernel.setObserver(new Ritmo(FRENO, proceso));
+        keys.start();
+        kernel.run();
+
+        out.println();
+        out.println("sesion cerrada: " + kernel.clock() + " tics, "
+                + kernel.syscalls().total() + " llamadas al sistema");
+        guardarImagen(imagen, fs);
+    }
+
+    /** La salida de las ordenes va tal cual a la pantalla. */
+    private static Output salida(PrintStream out) {
+        return out::print;
+    }
+
+    // ------------------------------------------------------------------
+    // Imagen en disco
+    // ------------------------------------------------------------------
+
+    /**
+     * Abre la imagen o crea una nueva.
+     *
+     * La imagen que se guarda es el disco entero, bloque a bloque, asi que al
+     * volver a entrar los ficheros siguen donde estaban. Es la persistencia real
+     * del sistema de ficheros, no un truco de la demostracion.
+     */
+    private static FileSystem abrirImagen(Path ruta) {
+        if (ruta != null && Files.exists(ruta)) {
+            try {
+                byte[] raw = Files.readAllBytes(ruta);
+                return FileSystem.mount(raw, BLOQUE, new BestFit());
+            } catch (IOException e) {
+                System.out.println("no se pudo leer la imagen, se empieza de cero: "
+                        + e.getMessage());
+            } catch (RuntimeException e) {
+                // Una imagen de otro tamano o de otra version no se puede montar;
+                // se avisa en vez de reventar con una traza.
+                System.out.println("la imagen no encaja, se empieza de cero: " + e.getMessage());
+            }
+        }
+        return ShellDemo.imagen();
+    }
+
+    /** Guarda el disco tal y como ha quedado. */
+    private static void guardarImagen(Path ruta, FileSystem fs) {
+        if (ruta == null) {
+            return;
+        }
+        try {
+            Files.write(ruta, fs.image().toByteArray());
+            System.out.println("imagen guardada en " + ruta.toAbsolutePath());
+        } catch (IOException e) {
+            System.out.println("no se pudo guardar la imagen: " + e.getMessage());
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // El freno
+    // ------------------------------------------------------------------
+
+    /**
+     * Frena el sistema para que se pueda leer, y cierra la sesion cuando el
+     * teclado desaparece.
+     *
+     * El freno vive aqui y no en el nucleo por la misma razon que en la ventana:
+     * dormir es cosa de quien mira, no de quien ejecuta.
+     *
+     * El cierre es menos evidente. Si al salir de la terminal queda un proceso de
+     * fondo dando vueltas, el nucleo no termina nunca y la sesion se queda
+     * colgada sin decir nada. Cuando la terminal muere, se matan los que quedan:
+     * es lo que hace una shell de verdad al cerrarse.
+     */
+    private static final class Ritmo implements KernelObserver {
+
+        private final long millis;
+        private final Pcb terminal;
+        private boolean cerrando;
+
+        Ritmo(long millis, Pcb terminal) {
+            this.millis = millis;
+            this.terminal = terminal;
+        }
+
+        @Override
+        public void afterTurn(Kernel kernel) {
+            if (!cerrando && terminal.threads().get(0).state() == State.TERMINATED) {
+                cerrando = true;
+                for (Pcb otro : kernel.processes()) {
+                    if (otro.id() != terminal.id()) {
+                        kernel.kill(otro.id());
+                    }
+                }
+            }
+            if (millis <= 0) {
+                return;
+            }
+            try {
+                Thread.sleep(millis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+}

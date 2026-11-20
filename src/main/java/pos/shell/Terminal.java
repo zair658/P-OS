@@ -27,22 +27,65 @@ import pos.proc.Tcb;
 public final class Terminal implements HostedTask {
 
     private final Shell shell;
-    private final Console console;
+    private final Keys keys;
     private final LongSupplier clock;
     private final TextBuffer transcript = new TextBuffer();
+    private final Output out;
+    private final boolean echoLine;
+
+    /**
+     * Si el aviso lo pinta la terminal mientras espera, en vez de darlo por
+     * escrito junto a la linea. Es lo propio del teclado: con guion, el aviso y
+     * la linea se pintan juntos porque la linea ya esta; en vivo hay que ensenar
+     * el aviso antes de que alguien escriba.
+     */
+    private final boolean livePrompt;
+
+    /** Ya hay un aviso en pantalla esperando linea: no se repite en cada vuelta. */
+    private boolean promptShown;
 
     /**
      * @param shell la cascara que ejecuta las ordenes
-     * @param console el guion de lineas que llegan al teclado
+     * @param keys de donde llegan las lineas: un guion o el teclado
      * @param clock reloj del nucleo, para saber si la linea siguiente ya ha llegado
      */
-    public Terminal(Shell shell, Console console, LongSupplier clock) {
-        if (shell == null || console == null || clock == null) {
-            throw new IllegalArgumentException("la terminal necesita cascara, consola y reloj");
+    public Terminal(Shell shell, Keys keys, LongSupplier clock) {
+        this(shell, keys, clock, null, true);
+    }
+
+    /**
+     * Una terminal que ademas de acumular la sesion la va ensenyando.
+     *
+     * Con guion no hace falta: la sesion entera se imprime al final y queda
+     * igual de legible. Con teclado de verdad, no: quien escribe espera ver la
+     * respuesta de lo que acaba de escribir, no al cabo de veinte ordenes.
+     *
+     * @param screen donde va saliendo la sesion mientras ocurre, o null
+     * @param echoLine si la terminal repite la linea escrita. Se apaga cuando el
+     *     teclado ya la pinto al leerla, para no verla dos veces
+     */
+    public Terminal(Shell shell, Keys keys, LongSupplier clock, Output screen, boolean echoLine) {
+        if (shell == null || keys == null || clock == null) {
+            throw new IllegalArgumentException("la terminal necesita cascara, entrada y reloj");
         }
         this.shell = shell;
-        this.console = console;
+        this.keys = keys;
         this.clock = clock;
+        this.echoLine = echoLine;
+        // El aviso se pinta solo cuando hay pantalla y nadie va a repetir la
+        // linea: si la linea no se repite, alguien tiene que ensenar donde se
+        // escribe, y ese alguien es la terminal, que sabe cuando espera.
+        this.livePrompt = screen != null && !echoLine;
+        // Sin pantalla, la salida es el propio transcript: lo de siempre.
+        this.out = screen == null ? transcript : tee(transcript, screen);
+    }
+
+    /** Escribe en dos destinos a la vez: la memoria de la sesion y la pantalla. */
+    private static Output tee(Output first, Output second) {
+        return chunk -> {
+            first.print(chunk);
+            second.print(chunk);
+        };
     }
 
     /** Lo que se ha escrito en la pantalla, en orden. */
@@ -54,28 +97,40 @@ public final class Terminal implements HostedTask {
         return shell;
     }
 
-    public Console console() {
-        return console;
+    public Keys keys() {
+        return keys;
     }
 
     @Override
     public StepResult step(ExecutionHost host, Tcb thread) {
-        if (!console.hasNext()) {
+        if (!keys.hasNext()) {
             // Sin mas entrada la sesion no tiene sentido: se termina como un
             // programa que llega a su ultima instruccion, con codigo 0.
             shell.close();
             return StepResult.EXITED;
         }
         long now = clock.getAsLong();
-        long due = console.nextTick();
+        long due = keys.nextTick();
         if (due > now) {
+            // Con teclado de verdad no hay nada que ejecutar todavia, asi que
+            // este es el momento de pintar el aviso: se hace aqui, y no en el
+            // hilo que lee, para que el aviso salga despues de la respuesta del
+            // comando anterior y no antes.
+            if (livePrompt && !promptShown) {
+                out.print(shell.prompt());
+                promptShown = true;
+            }
             thread.setPendingSleep(due - now);
             return StepResult.BLOCKED;
         }
 
-        Console.Keystroke keystroke = console.next();
-        transcript.print(shell.prompt() + keystroke.text() + "\n");
-        shell.runLine(keystroke.text(), transcript);
+        Keys.Keystroke keystroke = keys.next();
+        // La linea ya esta dentro: el aviso que hubiera en pantalla ha cumplido.
+        promptShown = false;
+        if (echoLine) {
+            out.print(shell.prompt() + keystroke.text() + "\n");
+        }
+        shell.runLine(keystroke.text(), out);
 
         // Ejecutar una linea cuesta lo mismo que una instruccion: si no, la
         // terminal tendria un turno infinito y la cuota no valdria para nadie.
@@ -104,6 +159,6 @@ public final class Terminal implements HostedTask {
 
     @Override
     public String toString() {
-        return "terminal(" + console.pending() + " lineas pendientes)";
+        return "terminal(" + keys.pending() + " lineas pendientes)";
     }
 }

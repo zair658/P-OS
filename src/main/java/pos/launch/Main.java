@@ -32,6 +32,7 @@ import pos.sched.SjfScheduler;
  *   java -jar p-os.jar --sincronizacion  semaforos y variables de condicion
  *   java -jar p-os.jar --medicion      cuanto cuesta cada mecanismo de sincronizacion
  *   java -jar p-os.jar --shell         la terminal: ordenes, tuberias y contabilidad
+ *   java -jar p-os.jar --interactivo   la misma terminal, con teclado de verdad
  *   java -jar p-os.jar --version       version y salida
  * </pre>
  */
@@ -64,7 +65,7 @@ public final class Main {
             return;
         }
         if (flag(args, "--help") || flag(args, "-h")) {
-            System.out.println("uso: p-os [--ui] [--captura [carpeta]] [--traza] [--memoria] [--swap] [--disco] [--concurrencia] [--sincronizacion] [--medicion [--csv]] [--shell] [--version] [--help]");
+            System.out.println("uso: p-os [--ui] [--captura [carpeta]] [--traza] [--memoria] [--swap] [--disco] [--concurrencia] [--sincronizacion] [--medicion [--csv]] [--shell] [--interactivo [--imagen fichero]] [--version] [--help]");
             System.out.println("  sin argumentos  diagnostico de memoria y comparacion de planificadores");
             System.out.println("  --traza         anade la traza completa de la ejecucion Round Robin");
             System.out.println("  --memoria       demostracion de los tres esquemas de memoria");
@@ -74,6 +75,8 @@ public final class Main {
             System.out.println("  --sincronizacion  semaforos, productor/consumidor y condiciones");
             System.out.println("  --medicion      coste medido de los tres mecanismos, en ticks");
             System.out.println("  --shell         sesion de terminal: ordenes, tuberias y llamadas");
+            System.out.println("  --interactivo   la misma terminal, pero escribiendo desde el teclado");
+            System.out.println("  --imagen <f>    con --interactivo, guarda el disco en ese fichero y lo reutiliza");
             System.out.println("  --ui            abre la ventana con el sistema corriendo dentro");
             System.out.println("  --captura [dir] las mismas vistas en PNG, sin pantalla (por defecto capturas/)");
             System.out.println("  --csv           con --medicion, saca las cifras para hoja de calculo");
@@ -81,7 +84,9 @@ public final class Main {
         }
 
         // Con --medicion --csv la salida es para una hoja de calculo: sin cabecera.
-        if (!(flag(args, "--medicion") && flag(args, "--csv"))) {
+        // Con --interactivo la salida es una sesion: una cabecera del programa
+        // ahi en medio solo ensucia lo que se supone que es una terminal.
+        if (!(flag(args, "--medicion") && flag(args, "--csv")) && !flag(args, "--interactivo")) {
             System.out.println(PosVersion.FULL);
             System.out.println();
         }
@@ -131,6 +136,13 @@ public final class Main {
 
         if (flag(args, "--medicion")) {
             MetricsDemo.run(flag(args, "--csv"));
+            return;
+        }
+
+        if (flag(args, "--interactivo")) {
+            // El disco vive en un fichero si se pide: al salir se guarda y la
+            // proxima sesion encuentra lo que dejo escrito la anterior.
+            InteractiveShell.run(ruta(args, "--imagen"));
             return;
         }
 
@@ -309,5 +321,15 @@ public final class Main {
             }
         }
         return false;
+    }
+
+    /** El valor que acompanya a una opcion, o null si no esta. */
+    private static java.nio.file.Path ruta(String[] args, String name) {
+        for (int i = 0; i < args.length - 1; i++) {
+            if (name.equals(args[i])) {
+                return java.nio.file.Path.of(args[i + 1]);
+            }
+        }
+        return null;
     }
 }

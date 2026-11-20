@@ -494,8 +494,9 @@ Operadores: `>` escribe, `>>` añade, `<` lee, `|` encadena. Un fallo en una
 etapa detiene la cadena e informa con código de salida distinto de cero.
 
 Historial de lo escrito, consultable con la orden `history`. No se navega con
-flechas ni hay autocompletado: la entrada es un guion, no un teclado (apartado
-12.4).
+flechas ni hay autocompletado. La entrada puede ser un guion, que es lo que usan
+las pruebas y `--shell`, o el teclado, que es lo que usa `--interactivo`
+(apartado 12.4); en los dos casos el historial es una lista y no un editor.
 
 ### 12.2 Familias de comandos
 
@@ -529,10 +530,17 @@ escritas, porque son decisiones y no pendientes:
    compartidos, así que `cat fichero | head -n 1` lee el fichero entero. Se
    arreglará cuando haya señales, no antes: sin `SIGPIPE` no hay forma de cortar
    la primera etapa.
-2. **La entrada es guionizada.** `Console` entrega líneas con su tic, no teclas
-   de un terminal real. Con eso la sesión es determinista y las pruebas pueden
-   afirmar sobre el texto que sale. El historial existe (`history`), pero no es
-   navegable con flechas ni hay autocompletado: eso pide un terminal de verdad.
+2. **La entrada puede ser un guion o el teclado.** `Console` entrega líneas con
+   su tic, y con eso la sesión es determinista y las pruebas pueden afirmar sobre
+   el texto que sale; es lo que usan `--shell` y casi todas las pruebas.
+   `LiveKeys` hace lo mismo leyendo de la entrada estándar, en otro hilo, y deja
+   las líneas en una cola; la terminal, en su turno, mira si hay algo y, si no lo
+   hay, pide dormir unos tics y suelta el turno. Ese rodeo no es adorno: si la
+   terminal se quedara parada en un `readLine` dentro de su turno, los demás
+   procesos no correrían mientras alguien piensa qué escribir, y el sistema
+   entero sería un solo hilo disfrazado. Es lo que hace `--interactivo`. El
+   historial existe (`history`) y sigue sin navegarse con flechas: eso pide un
+   editor de línea, no un lector de líneas.
 3. **Las familias de comandos son cuatro, no seis.** Ficheros, texto y sistema,
    más el control de trabajos (apartado 12.5). Planificación, sincronización e
    interbloqueo se ven desde las demostraciones (`--traza`, `--concurrencia`,
@@ -585,10 +593,13 @@ Decisiones que conviene tener escritas, porque son límites y no olvidos:
 2. **Nadie se detiene a sí mismo.** El hilo que ejecuta la orden está dentro de
    su turno: si se marcara detenido, al devolver el turno el núcleo lo volvería a
    encolar y la orden se contradiría. Un proceso puede detener a otro.
-3. **No hay señales, así que no hay Ctrl-Z.** La entrada es un guion
-   (`Console`), no un teclado; `stop` es la orden explícita que hace lo que en un
-   terminal de verdad hace el teclado. `fg` espera en lugar de recibir un aviso
-   asíncrono, que es justo lo que permite no necesitar manejadores de señal.
+3. **No hay señales, así que no hay Ctrl-Z.** La entrada puede ser un guion
+   (`Console`) o el teclado (`--interactivo`), pero en los dos casos llegan líneas
+   enteras, no pulsaciones sueltas: un Ctrl-Z es una tecla, no una línea, y
+   atraparla pide un terminal en modo crudo. `stop` es la orden explícita que hace
+   lo que en un terminal de verdad hace el teclado. `fg` espera en lugar de
+   recibir un aviso asíncrono, que es justo lo que permite no necesitar
+   manejadores de señal.
 4. **Un detenido no es un averiado.** Al cerrar el sistema, un hilo que seguía
    detenido se anota como «seguía detenido al cerrar el sistema», no como
    interbloqueo: no espera nada. La traza lo dice con la palabra «en pausa»

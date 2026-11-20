@@ -57,6 +57,7 @@ soluciones al lado, y la conclusión escrita.
 | `--medicion` | Coste en ticks de los tres mecanismos de espera, medido |
 | `--medicion --csv` | Lo mismo, en formato de hoja de cálculo |
 | `--shell` | Una sesión de terminal sobre una imagen de ficheros |
+| `--interactivo` | La misma terminal, pero escribiendo desde el teclado |
 | `--ui` | La ventana del simulador |
 | `--captura [carpeta]` | Las mismas vistas en PNG, sin pantalla |
 | `--traza` | Añade la traza completa de la ejecución Round Robin |
@@ -65,8 +66,32 @@ soluciones al lado, y la conclusión escrita.
 ## La terminal
 
 `--shell` imprime una sesión ya guionizada, no lee del teclado: es una
-demostración más. Las órdenes que entiende el intérprete son estas, las mismas que
-usa esa sesión.
+demostración más. `--interactivo` es la misma terminal con el teclado de verdad:
+escribes una orden, la ejecutas, ves la respuesta y sigues, sin cerrar la sesión
+entre orden y orden.
+
+```
+java -jar target/p-os-0.1.0-SNAPSHOT.jar --interactivo
+java -jar target/p-os-0.1.0-SNAPSHOT.jar --interactivo --imagen /tmp/disco.img
+```
+
+Con `--imagen` el disco vive en un fichero: al salir se guarda y la sesión
+siguiente encuentra lo que dejó escrito la anterior. Sin esa bandera el disco se
+crea al vuelo y se pierde al cerrar.
+
+Lo que se puede probar en una sesión interactiva es lo mismo que en el guion,
+pero sin escribir el guion: `ls`, `cat`, tuberías, y sobre todo el control de
+trabajos, que es lo que gana con un teclado delante
+
+```
+spawn suma /tarea.pos &
+jobs
+ps
+fg
+kill %1
+```
+
+Las órdenes que entiende el intérprete son estas, las mismas en los dos modos.
 
 | Familia | Órdenes |
 |---|---|
@@ -82,9 +107,10 @@ denegarlas. Eso vale también para la propia terminal, que es un proceso y pide
 turno como los demás. `help` las describe dentro de la sesión y `method` cambia el
 método de asignación, para ver el mismo árbol con los tres.
 
-Como la sesión va guionizada, lo que se puede probar es lo que hay escrito en el
-guion. Está en `ShellDemo`, en una lista de líneas: cambiar una orden por otra y
-volver a lanzar es todo lo que hace falta para ver qué responde el sistema.
+En el modo guionizado, lo que se puede probar es lo que hay escrito en el guion.
+Está en `ShellDemo`, en una lista de líneas: cambiar una orden por otra y volver a
+lanzar es todo lo que hace falta para ver qué responde el sistema. En modo
+interactivo no hay guion que mirar: se escribe y se ve.
 
 ## Cómo está hecho
 

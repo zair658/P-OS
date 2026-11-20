@@ -11,6 +11,7 @@ import pos.proc.Assembler;
 import pos.proc.Pcb;
 import pos.sched.RoundRobinScheduler;
 import pos.shell.Console;
+import pos.shell.Keys;
 import pos.shell.Shell;
 import pos.shell.Terminal;
 import pos.ui.UiFeed;
@@ -212,16 +213,16 @@ public final class UiDemo {
         // matar para que las tablas ensenen un trabajo detenido durante unos
         // cuantos tics, y no solo al principio y al final.
         Terminal terminal = new Terminal(shell, new Console(List.of(
-                new Console.Keystroke(1, "spawn bucle /bucle.pos &"),
-                new Console.Keystroke(8, "jobs"),
-                new Console.Keystroke(16, "stop %1"),
-                new Console.Keystroke(24, "jobs"),
-                new Console.Keystroke(32, "ps"),
-                new Console.Keystroke(40, "bg %1"),
-                new Console.Keystroke(48, "stop %1"),
-                new Console.Keystroke(56, "kill %1"),
-                new Console.Keystroke(64, "clock"),
-                new Console.Keystroke(72, "exit 0"))), kernel::clock);
+                new Keys.Keystroke(1, "spawn bucle /bucle.pos &"),
+                new Keys.Keystroke(8, "jobs"),
+                new Keys.Keystroke(16, "stop %1"),
+                new Keys.Keystroke(24, "jobs"),
+                new Keys.Keystroke(32, "ps"),
+                new Keys.Keystroke(40, "bg %1"),
+                new Keys.Keystroke(48, "stop %1"),
+                new Keys.Keystroke(56, "kill %1"),
+                new Keys.Keystroke(64, "clock"),
+                new Keys.Keystroke(72, "exit 0"))), kernel::clock);
         Pcb proceso = kernel.createHostedProcess("terminal", terminal);
         // La sesion tiene que saber en nombre de que hilo llama: sin esto, la
         // primera orden no puede pedir nada al nucleo y el proceso muere.
