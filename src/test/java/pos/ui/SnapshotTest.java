@@ -13,9 +13,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import pos.kernel.Kernel;
+import pos.mm.MemorySetup;
 import pos.launch.UiDemo;
 import pos.phys.PhysicalMemory;
+import pos.proc.ExecutionHost;
+import pos.proc.HostedTask;
+import pos.proc.Pcb;
 import pos.proc.State;
+import pos.proc.StepResult;
+import pos.proc.Tcb;
+import pos.sched.RoundRobinScheduler;
 
 /**
  * Pruebas de la foto que alimenta la ventana.
@@ -38,18 +45,26 @@ class SnapshotTest {
         assertTrue(last.finished(), "el escenario tiene que acabar solo");
         assertTrue(feed.turns() > 1, "tiene que haber mas de una foto: " + feed.turns());
 
-        // Los siete procesos y sus nueve hilos, todos cerrados.
-        assertEquals(7, last.processes().size());
-        // Dos hilos en 'contienda', dos en 'cola' y uno en cada uno de los otros cinco.
-        assertEquals(9, last.threads().size());
-        assertEquals(9, last.count(State.TERMINATED.etiqueta()));
+        // Ocho procesos y sus diez hilos: los siete del escenario mas el bucle
+        // que la terminal arranca, para y finalmente mata.
+        assertEquals(8, last.processes().size());
+        // Dos hilos en 'contienda', dos en 'cola' y uno en cada uno de los otros seis.
+        assertEquals(10, last.threads().size());
+        assertEquals(10, last.count(State.TERMINATED.etiqueta()));
 
-        // Ningun hilo se quedo a medias ni fallo.
+        // Ningun hilo se quedo a medias ni fallo, salvo el bucle que la sesion
+        // mata a proposito: ese deja constancia de que lo mataron a el.
+        int porKill = 0;
         for (Snapshot.ThreadInfo thread : last.threads()) {
+            if (thread.failure().startsWith("terminado por kill")) {
+                porKill++;
+                continue;
+            }
             assertTrue(thread.failure().isEmpty(),
                     "el hilo " + thread.id() + " acabo mal: " + thread.failure());
             assertTrue(thread.cpu() > 0, "el hilo " + thread.id() + " no ejecuto nada");
         }
+        assertEquals(1, porKill, "solo el trabajo que se mata a proposito");
         assertTrue(last.cpuTicks() > 0);
         assertEquals(kernel.clock(), last.clock());
     }
@@ -139,6 +154,30 @@ class SnapshotTest {
         assertFalse(last.trace().isEmpty());
         assertTrue(last.trace().size() <= Snapshotter.TRACE_LINES,
                 "la foto no puede arrastrar la traza entera: " + last.trace().size());
+    }
+
+    @Test
+    @DisplayName("con todo lo vivo detenido, la barra dice 'en pausa', no 'ejecutando'")
+    void enPausa() {
+        Kernel kernel = new Kernel(new RoundRobinScheduler(6),
+                MemorySetup.paged(4096, 256, 16));
+        HostedTask gira = new HostedTask() {
+            @Override
+            public StepResult step(ExecutionHost host, Tcb thread) {
+                return StepResult.YIELDED;
+            }
+
+            @Override
+            public String toString() {
+                return "gira";
+            }
+        };
+        Pcb proceso = kernel.createHostedProcess("gira", gira);
+        kernel.suspend(proceso.id());
+
+        Snapshot shot = Snapshotter.capture(kernel);
+        assertEquals(State.STOPPED.etiqueta(), shot.threads().get(0).state());
+        assertEquals("en pausa", shot.phase());
     }
 
     @Test

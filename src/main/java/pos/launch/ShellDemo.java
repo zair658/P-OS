@@ -103,6 +103,8 @@ public final class ShellDemo {
         System.out.println();
         unaSesion();
         System.out.println();
+        elControlDeTrabajos();
+        System.out.println();
         laTerminalCompiteConOtros();
         System.out.println();
         loQueQuedaEnElNucleo();
@@ -140,6 +142,50 @@ public final class ShellDemo {
         System.out.println(terminal.transcript());
         System.out.println("estado final: el proceso de la terminal acabo con codigo "
                 + kernel.syscalls().exitStatus(proceso.id()));
+    }
+
+
+    // ------------------------------------------------------------------
+    // 1b. Control de trabajos
+    // ------------------------------------------------------------------
+
+    /**
+     * Una sesion que para, manda al fondo y mata un trabajo.
+     *
+     * Lo interesante no es que las ordenes contesten, sino que el proceso
+     * detenido desaparece de la cola de listos sin morir: durante todo el rato
+     * que esta parado sigue existiendo, conserva su memoria y sus descriptores,
+     * y no consume turno. Por eso se ensena tambien la traza del nucleo.
+     */
+    private static void elControlDeTrabajos() {
+        System.out.println("=== control de trabajos: parar, mandar al fondo y matar ===");
+
+        Kernel kernel = montar(imagen());
+        Terminal terminal = terminal(kernel, Console.of(
+                "spawn bucle /bucle.pos &",
+                "jobs",
+                "stop %1",
+                "jobs",
+                "ps",
+                "bg %1",
+                "jobs",
+                "kill %1",
+                "jobs",
+                "exit 0"));
+        Pcb proceso = kernel.createHostedProcess("terminal", terminal);
+        terminal.shell().attach(proceso.threads().get(0));
+        kernel.run();
+
+        System.out.println(terminal.transcript());
+
+        System.out.println("lo que apunto el nucleo:");
+        for (Trace.Event event : kernel.trace().events()) {
+            if (event.kind() == pos.kernel.EventKind.STOP
+                    || event.kind() == pos.kernel.EventKind.CONT) {
+                System.out.println("  " + event.line());
+            }
+        }
+        System.out.println("reloj final: " + kernel.clock() + " tics");
     }
 
     // ------------------------------------------------------------------
@@ -231,6 +277,7 @@ public final class ShellDemo {
                 la terminal es un proceso mas y pide permiso para todo
                 """);
         fs.create("/tarea.pos", TAREA);
+        fs.create("/bucle.pos", BUCLE);
         fs.mkdir("/notas");
         fs.create("/notas/pi.txt", "3,141592\n");
         fs.create("/notas/e.txt", "2,718281\n");

@@ -132,6 +132,18 @@ public final class UiDemo {
             fin:  EXIT
             """;
 
+    /**
+     * Bucle que no termina. Lo arranca la terminal con {@code &} para que la
+     * ventana tenga un trabajo que parar, mandar al fondo y matar: sin un
+     * proceso asi, el estado "detenido" no aparece nunca en las tablas.
+     */
+    private static final String BUCLE = """
+            SET 0
+            loop: ADD 1
+                  STORE 0
+                  JMP loop
+            """;
+
     /** Productor y consumidor dandose el turno con dos semaforos. */
     private static final String CON_SEMAFOROS = """
             SEM_INIT hueco 1
@@ -196,10 +208,19 @@ public final class UiDemo {
         kernel.createProcess("imprenta-b", Assembler.load("imprenta-b", CON_RECURSOS));
 
         Shell shell = new Shell(kernel.syscalls());
+        // La sesion es larga a proposito: encadena parar, mandar al fondo y
+        // matar para que las tablas ensenen un trabajo detenido durante unos
+        // cuantos tics, y no solo al principio y al final.
         Terminal terminal = new Terminal(shell, new Console(List.of(
-                new Console.Keystroke(1, "ps"),
-                new Console.Keystroke(24, "mem"),
-                new Console.Keystroke(48, "clock"),
+                new Console.Keystroke(1, "spawn bucle /bucle.pos &"),
+                new Console.Keystroke(8, "jobs"),
+                new Console.Keystroke(16, "stop %1"),
+                new Console.Keystroke(24, "jobs"),
+                new Console.Keystroke(32, "ps"),
+                new Console.Keystroke(40, "bg %1"),
+                new Console.Keystroke(48, "stop %1"),
+                new Console.Keystroke(56, "kill %1"),
+                new Console.Keystroke(64, "clock"),
                 new Console.Keystroke(72, "exit 0"))), kernel::clock);
         Pcb proceso = kernel.createHostedProcess("terminal", terminal);
         // La sesion tiene que saber en nombre de que hilo llama: sin esto, la
@@ -218,6 +239,7 @@ public final class UiDemo {
                 la terminal es un proceso mas y pide permiso para todo
                 """);
         fs.create("/notas.txt", "unidades fisicas, marcos, paginas\n");
+        fs.create("/bucle.pos", BUCLE);
         return fs;
     }
 

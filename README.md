@@ -19,7 +19,7 @@ Requiere **Java 21** y **Maven**. No hay dependencias de ejecución: solo JUnit
 para las pruebas.
 
 ```bash
-mvn test                 # 286 pruebas; imprime las tablas comparativas
+mvn test                 # 338 pruebas; imprime las tablas comparativas
 mvn package              # genera target/p-os-0.1.0-SNAPSHOT.jar
 ```
 
@@ -92,8 +92,8 @@ Los paquetes siguen esa separación:
 
 ## Estado
 
-Ocho fases cerradas. El código son unas 17 000 líneas y las pruebas 5 100, en 42
-clases de prueba.
+Ocho fases cerradas. El código son unas 19 000 líneas y las pruebas 6 200, en 24
+clases de prueba (338 casos contando los parametrizados).
 
 | Fase | Contenido | Documento |
 |---|---|---|

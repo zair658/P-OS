@@ -1,5 +1,6 @@
 package pos.shell;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import pos.base.PosFault;
@@ -48,22 +49,64 @@ final class JobCommands {
             out.println("no hay trabajos en esta sesion");
             return;
         }
-        out.println("  trab  pid  estado       plano   nombre");
+
+        // Las filas se reunen antes de pintar porque el ancho de cada columna
+        // depende de lo que haya dentro: con "listo" y "detenido" en la misma
+        // tabla, un ancho fijo deja la columna del plano temblando.
+        List<String[]> filas = new ArrayList<>();
+        List<String> fantasmas = new ArrayList<>();
         for (JobTable.Job job : jobs.all()) {
             String state = shell.jobState(job.pid());
             if (state.isEmpty()) {
                 // El proceso desaparecio del nucleo sin que la sesion se
                 // enterara. Se dice y se quita: una fila fantasma en la tabla
                 // es peor que una tabla corta.
-                out.println("  [" + job.number() + "]   p" + job.pid()
-                        + "  ya no existe  -       " + job.label());
                 jobs.remove(job.pid());
+                fantasmas.add("  [" + job.number() + "] p" + job.pid()
+                        + ": ya no existe, sale de la tabla");
                 continue;
             }
-            out.println("  [" + job.number() + "]   p" + job.pid() + "  "
-                    + pad(state, 12) + pad(job.background() ? "segundo" : "primero", 8)
-                    + job.label());
+            filas.add(new String[] {
+                    "[" + job.number() + "]", "p" + job.pid(), state,
+                    job.background() ? "segundo" : "primero", job.label()});
         }
+        if (filas.isEmpty()) {
+            out.println("no hay trabajos en esta sesion");
+        } else {
+            out.println(fila(new String[] {"trab", "pid", "estado", "plano", "nombre"},
+                    anchos(filas)));
+            for (String[] row : filas) {
+                out.println(fila(row, anchos(filas)));
+            }
+        }
+        for (String aviso : fantasmas) {
+            out.println(aviso);
+        }
+    }
+
+    /** El ancho de cada columna: lo que ocupe la cabecera o el valor mas largo. */
+    private static int[] anchos(List<String[]> filas) {
+        int[] ancho = {"trab".length(), "pid".length(), "estado".length(),
+                "plano".length(), "nombre".length()};
+        for (String[] row : filas) {
+            for (int i = 0; i < row.length; i++) {
+                ancho[i] = Math.max(ancho[i], row[i].length());
+            }
+        }
+        return ancho;
+    }
+
+    /** Una linea de la tabla: columnas alineadas y la ultima sin relleno. */
+    private static String fila(String[] campos, int[] ancho) {
+        StringBuilder linea = new StringBuilder("  ");
+        for (int i = 0; i < campos.length; i++) {
+            if (i == campos.length - 1) {
+                linea.append(campos[i]);
+            } else {
+                linea.append(pad(campos[i], ancho[i] + 2));
+            }
+        }
+        return linea.toString();
     }
 
     // ------------------------------------------------------------------
@@ -135,8 +178,13 @@ final class JobCommands {
     /**
      * Traduce el argumento a un trabajo: {@code %n} por numero, o un pid que
      * tiene que ser de un trabajo de esta sesion.
+     *
+     * Se comparte con {@code kill}, que tambien acepta {@code %n}: en una
+     * terminal de verdad las ordenes que hablan de trabajos hablan todas igual,
+     * y obligar a buscar el pid con {@code jobs} antes de matar seria una
+     * molestia sin ninguna ventaja.
      */
-    private static JobTable.Job resolve(Shell shell, List<String> args) {
+    static JobTable.Job resolve(Shell shell, List<String> args) {
         if (args.isEmpty()) {
             throw new PosFault("falta el trabajo: escribe %1 o el pid");
         }

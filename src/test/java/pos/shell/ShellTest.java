@@ -415,7 +415,7 @@ class ShellTest {
             s.debeContener("[1] p2 bucle (segundo plano)");
             s.debeContener("bucle (segundo plano): detenido (1 hilo(s) fuera de la cola)");
             // La fila de la tabla: numero, pid, estado, plano y nombre.
-            s.debeTenerLinea("  [1]   p2  detenido    segundo bucle");
+            s.debeTenerLinea("  [1]   p2   detenido  segundo  bucle");
         }
 
         @Test
@@ -425,7 +425,7 @@ class ShellTest {
             s.debeContener("reanudado en segundo plano");
             // Vuelve a la cola de listos: no se salta el turno por haber estado
             // detenido, y la tabla lo llama por su nombre.
-            s.debeTenerLinea("  [1]   p2  listo       segundo bucle");
+            s.debeTenerLinea("  [1]   p2   listo   segundo  bucle");
         }
 
         @Test
@@ -469,6 +469,14 @@ class ShellTest {
             s.debeContener("no hay trabajos en esta sesion");
             s.debeContener("no hay ningun trabajo %9");
             s.debeContener("falta el trabajo");
+        }
+
+        @Test
+        @DisplayName("kill acepta el numero de trabajo y lo saca de la tabla")
+        void killPorNumero() {
+            Sesion s = sesion("spawn bucle /bucle.pos &", "stop %1", "kill %1", "jobs");
+            s.debeContener("p2 terminado (1 hilo(s))");
+            s.debeContener("no hay trabajos en esta sesion");
         }
 
         @Test

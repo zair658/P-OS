@@ -74,6 +74,15 @@ cuenta: si lo hiciera, dos pestañas podrían estar enseñando instantes distint
 | Sistema | Cerrojos, semáforos y condiciones, con dueño y cola de espera |
 | Traza | Los últimos eventos, con reloj y actor |
 
+La pestaña de procesos enseña el estado tal cual lo dice el núcleo, y eso
+incluye **detenido**: un trabajo parado con `stop %n` sigue en la tabla, con su
+memoria puesta y sus hilos en `STOPPED`. No es una foto vieja ni un proceso a
+medio morir, y la ventana no puede esconderlo: si lo filtrara, el usuario vería
+desaparecer un proceso que no ha muerto. Un proceso terminado, en cambio, se
+queda en la tabla con su memoria final ya devuelta; cuando lo matan a mitad de
+sesión, la liberación ocurre en el acto y el mapa de memoria lo refleja en el
+siguiente aviso de turno.
+
 El mapa de memoria es lo que más cuesta: son 192 unidades y hay que poder
 contar cuántas tiene cada proceso. Se pinta como una rejilla de 64 columnas; los
 huecos libres van más oscuros que el panel, porque memoria libre es ausencia de

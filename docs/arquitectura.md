@@ -532,15 +532,66 @@ escritas, porque son decisiones y no pendientes:
    de un terminal real. Con eso la sesión es determinista y las pruebas pueden
    afirmar sobre el texto que sale. El historial existe (`history`), pero no es
    navegable con flechas ni hay autocompletado: eso pide un terminal de verdad.
-3. **Las familias de comandos son tres, no seis.** Ficheros, texto y sistema.
-   Planificación, sincronización e interbloqueo se ven desde las demostraciones
-   (`--traza`, `--concurrencia`, `--sincronizacion`), no desde órdenes de la
-   terminal; los trabajos en segundo plano necesitan señales, que tampoco hay.
+3. **Las familias de comandos son cuatro, no seis.** Ficheros, texto y sistema,
+   más el control de trabajos (apartado 12.5). Planificación, sincronización e
+   interbloqueo se ven desde las demostraciones (`--traza`, `--concurrencia`,
+   `--sincronizacion`), no desde órdenes de la terminal.
 
 Lo que sí está entero: la frontera de llamadas al sistema, la tabla de
 descriptores por proceso, la terminal como proceso nativo con cuota y bloqueos,
-el análisis de línea con comillas, tuberías y redirecciones, y la contabilidad
-de llamadas por código y por proceso.
+el análisis de línea con comillas, tuberías y redirecciones, el control de
+trabajos y la contabilidad de llamadas por código y por proceso.
+
+### 12.5 Control de trabajos
+
+Un **trabajo** es un proceso que arrancó la sesión, con un número de la sesión,
+un nombre puesto por quien lo lanzó y un plano: primer o segundo. El núcleo no
+sabe nada de eso; la sesión lo guarda en `JobTable` y pregunta el estado al
+núcleo cada vez que pinta la tabla. Guardar el estado en la tabla de trabajos
+sería enseñar la foto de hace un rato: un trabajo que terminó hace veinte tics
+seguiría apareciendo como «ejecutando».
+
+Órdenes:
+
+| Orden | Qué hace |
+| --- | --- |
+| `spawn programa ruta &` | arranca el proceso en segundo plano y lo anota como trabajo |
+| `jobs` | lista los trabajos vivos con número, pid, estado, plano y nombre |
+| `stop %n` | detiene el trabajo sin matarlo |
+| `bg %n` | lo deja en segundo plano; si estaba detenido, lo reanuda |
+| `fg %n` | lo trae al primer plano y la terminal espera a que termine |
+| `kill %n` | termina el trabajo y lo saca de la tabla |
+
+Todas aceptan `%n` o un pid. Un número suelto se interpreta siempre como pid,
+porque `ps` y el resto del sistema hablan en pids.
+
+Del lado del núcleo hacen falta tres operaciones nuevas, y con ellas un estado:
+
+- `suspend(pid)` saca los hilos ejecutables del proceso de la cola de listos y
+  los marca `STOPPED`. El hilo de Java que los transporta sigue esperando turno
+  igual que antes: detener no cuesta ni un hilo del sistema anfitrión.
+- `resume(pid)` los devuelve a la cola de listos.
+- `waitForProcess(pid)` bloquea al que llama hasta que el proceso indicado
+  termine; es lo que hace `fg`, y es una espera más de las que el núcleo ya sabe
+  gestionar, no un caso aparte.
+
+Decisiones que conviene tener escritas, porque son límites y no olvidos:
+
+1. **Un hilo bloqueado no se detiene.** Está esperando un cerrojo o un permiso
+   que el recurso ya le dio por concedido; congelarlo ahí dejaría la concesión en
+   el aire y el recurso contaría como ocupado por quien no lo usa. Se detiene lo
+   que puede ejecutar; lo que espera, sigue esperando.
+2. **Nadie se detiene a sí mismo.** El hilo que ejecuta la orden está dentro de
+   su turno: si se marcara detenido, al devolver el turno el núcleo lo volvería a
+   encolar y la orden se contradiría. Un proceso puede detener a otro.
+3. **No hay señales, así que no hay Ctrl-Z.** La entrada es un guion
+   (`Console`), no un teclado; `stop` es la orden explícita que hace lo que en un
+   terminal de verdad hace el teclado. `fg` espera en lugar de recibir un aviso
+   asíncrono, que es justo lo que permite no necesitar manejadores de señal.
+4. **Un detenido no es un averiado.** Al cerrar el sistema, un hilo que seguía
+   detenido se anota como «seguía detenido al cerrar el sistema», no como
+   interbloqueo: no espera nada. La traza lo dice con la palabra «en pausa»
+   (`IDLE`) en vez de `DEADLOCK`.
 
 ---
 

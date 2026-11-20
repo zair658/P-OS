@@ -26,7 +26,7 @@ public final class SystemCommands {
 
     static void register(CommandTable table) {
         table.register(Commands.of("ps", "", "lista los procesos vivos", SystemCommands::ps));
-        table.register(Commands.of("kill", "<pid>", "termina un proceso", SystemCommands::kill));
+        table.register(Commands.of("kill", "pid | %n", "termina un proceso", SystemCommands::kill));
         table.register(Commands.of("mem", "", "resume la memoria fisica", SystemCommands::mem));
         table.register(Commands.of("sleep", "<tics>", "duerme la terminal unos tics",
                 SystemCommands::sleep));
@@ -67,10 +67,17 @@ public final class SystemCommands {
 
     private static void kill(Shell shell, List<String> args, Input in, Output out) {
         if (args.size() != 1) {
-            throw new PosFault("uso: kill <pid>");
+            throw new PosFault("uso: kill <pid> | %n");
         }
-        int pid = number(args.get(0), "pid");
+        // Con %n se mata por numero de trabajo; el pid que se manda al nucleo
+        // sale de la tabla de la sesion, que es la unica que sabe emparejarlos.
+        JobTable.Job job = args.get(0).trim().startsWith("%")
+                ? JobCommands.resolve(shell, args) : null;
+        int pid = job == null ? number(args.get(0), "pid") : job.pid();
         int killed = number(shell.must(new Syscall.Kill(pid)), "hilos terminados");
+        if (job != null) {
+            shell.jobs().remove(pid);
+        }
         out.println("p" + pid + " terminado (" + killed + " hilo(s))");
     }
 

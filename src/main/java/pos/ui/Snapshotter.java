@@ -67,12 +67,21 @@ public final class Snapshotter {
         if (threads.isEmpty()) {
             return "listo";
         }
+        boolean soloDetenidos = false;
         for (Tcb thread : threads) {
-            if (thread.state() != State.TERMINATED) {
+            State state = thread.state();
+            if (state == State.STOPPED) {
+                // Ni ejecuta ni espera: el sistema no esta trabajando, pero
+                // tampoco ha acabado. Decir "ejecutando" con todo el mundo en
+                // pausa seria mentir en la barra de estado.
+                soloDetenidos = true;
+                continue;
+            }
+            if (state != State.TERMINATED) {
                 return clock == 0 ? "listo" : "ejecutando";
             }
         }
-        return "terminado";
+        return soloDetenidos ? "en pausa" : "terminado";
     }
 
     private static List<Snapshot.Proc> processes(List<Pcb> processes) {

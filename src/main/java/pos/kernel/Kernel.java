@@ -238,7 +238,12 @@ public final class Kernel implements ExecutionHost {
             killed++;
         }
         ProcessFactory.terminate(process);
+        // Se apunta lo que ocupaba antes de devolverlo y se devuelve en el acto:
+        // un proceso matado no puede quedarse con sus marcos. Si se liberara solo
+        // al cerrar el sistema, cualquier medida de memoria tomada despues de un
+        // kill contaria como ocupado lo que ya no usa nadie.
         captureFinalMemory(process);
+        releaseMemory(process);
         releaseWaiters(pid);
         int pending = syscalls.release(pid);
         trace.add(clock, EventKind.EXIT, "p" + pid,

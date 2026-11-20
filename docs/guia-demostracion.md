@@ -100,8 +100,15 @@ Si hay prisa, `--medicion --csv` y la tabla se abre en una hoja de cálculo.
 java -jar $JAR --shell
 ```
 
-Tres bloques: una sesión con tuberías y redirecciones, la terminal compitiendo
-con dos procesos de cálculo, y la contabilidad de llamadas que atendió el núcleo.
+Cuatro bloques: una sesión con tuberías y redirecciones, una sesión de control
+de trabajos, la terminal compitiendo con dos procesos de cálculo, y la
+contabilidad de llamadas que atendió el núcleo.
+
+En el bloque de trabajos se ve arrancar un bucle en segundo plano (`&`), pararlo
+(`stop %1`), mirar la tabla (`jobs`), devolverlo al fondo (`bg %1`) y matarlo
+(`kill %1`). Mientras está parado, `ps` lo enseña como **detenido**: sigue
+existiendo, conserva su memoria y no consume turno. La traza del núcleo lo
+confirma con un `STOP` y un `CONT`.
 
 Señalar en el segundo bloque que **los contadores avanzan mientras la terminal
 espera**: no tiene turno preferente. Y en el tercero, que cada orden es una suma
@@ -110,6 +117,10 @@ de llamadas al sistema con su coste en tics.
 > «La terminal no es la interfaz del simulador: es un proceso. Si tuviera
 > privilegios de planificación, los contadores no avanzarían mientras espera
 > teclas. Avanzan.»
+
+> «Y el trabajo detenido no está muerto: está fuera de la cola de listos, con su
+> memoria puesta. Eso es lo que hace `stop` en el núcleo: sacarlo de la cola, no
+> matarlo.»
 
 ## 7. Cierre (30 s)
 
@@ -146,6 +157,12 @@ hay es hardware debajo.
 **¿Por qué Java?** Porque el objetivo es ver los mecanismos, y la JVM da hilos de
 verdad, concurrencia de verdad y recolección de basura que no estorba. El precio
 es que no hay control de memoria física directa, y se asume.
+
+**¿Cómo se para un proceso sin señales?** Con una orden explícita, `stop`, que
+es una llamada al sistema. Un terminal de verdad para con Ctrl-Z porque hay
+señales; aquí la entrada es un guion, así que la orden hace de señal. `fg` espera
+al proceso en vez de recibir un aviso asíncrono: por eso no hacen falta
+manejadores.
 
 **¿Qué se descartó?** Está escrito en `docs/arquitectura.md`, con el motivo. El
 caso que más se pregunta es el gestor de huecos propio: el castigo proporcional

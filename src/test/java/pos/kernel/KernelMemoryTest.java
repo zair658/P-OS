@@ -79,6 +79,27 @@ class KernelMemoryTest {
     }
 
     @Test
+    @DisplayName("matar un proceso devuelve su memoria en el acto, no al cerrar el sistema")
+    void matarDevuelveLaMemoria() {
+        Kernel kernel = new Kernel(new FcfsScheduler(), MemorySetup.paged(1024, 32, 8));
+        Pcb victima = kernel.createProcess("victima", programa("victima", GUARDA));
+
+        assertEquals(32, kernel.memory().physical().usedUnits());
+        kernel.kill(victima.id());
+
+        // La memoria se devuelve al matar y no al acabar la ejecucion: si no, un
+        // proceso matado a mitad de sesion dejaria sus marcos ocupados para
+        // siempre y el mapa de la ventana ensenaria memoria que nadie usa.
+        assertEquals(0, kernel.memory().physical().usedUnits());
+        assertTrue(kernel.memory().physical().checkInvariants().isEmpty(),
+                kernel.memory().physical().checkInvariants().toString());
+        assertTrue(kernel.trace().events().stream().anyMatch(event ->
+                        event.kind() == EventKind.MEMORY_FREE
+                                && event.detail().contains("devuelve 32 unidades")),
+                "la traza tiene que dejar constancia de la devolucion");
+    }
+
+    @Test
     @DisplayName("al terminar el proceso se devuelve toda su memoria fisica")
     void laMemoriaSeRecuperaAlTerminar() {
         Kernel kernel = new Kernel(new FcfsScheduler(), MemorySetup.paged(1024, 32, 8));
