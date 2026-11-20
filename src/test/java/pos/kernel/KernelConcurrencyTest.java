@@ -274,7 +274,7 @@ class KernelConcurrencyTest {
     }
 
     @Test
-    @DisplayName("el interbloqueo no cuelga el simulador: termina y explica quien espera que")
+    @DisplayName("el interbloqueo no cuelga el sistema: termina y explica quien espera que")
     void elInterbloqueoNoCuelga() {
         Kernel kernel = kernel(new RoundRobinScheduler(1), CRUZADO, false);
 

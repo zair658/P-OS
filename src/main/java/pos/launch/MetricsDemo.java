@@ -25,7 +25,7 @@ import pos.sched.RoundRobinScheduler;
  *       llega entero. Lo que no hace es dejar de gastar CPU mientras espera. Si
  *       solo se midiera la correccion, esa tabla tendria tres filas iguales y no
  *       diria nada.</li>
- *   <li><b>Todo esta contado en ticks del simulador, no en milisegundos.</b> Un
+ *   <li><b>Todo esta contado en ticks del reloj, no en milisegundos.</b> Un
  *       tick es una instruccion retirada, asi que las cifras son comparables
  *       entre si y salen iguales en cada ejecucion. No dicen cuanto tarda en un
  *       procesador real; dicen cuanto trabajo hace el sistema, que es la
@@ -518,7 +518,7 @@ public final class MetricsDemo {
     // Apoyo
     // ------------------------------------------------------------------
 
-    /** Lo medido en una ejecucion. Los tiempos son ticks del simulador. */
+    /** Lo medido en una ejecucion. Los tiempos son ticks del reloj. */
     record Medida(String nombre, Integer valor, int esperado, long reloj, long bloqueos,
             long despertares, long sincronizacion, double esperaMedia) {
 

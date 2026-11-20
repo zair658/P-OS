@@ -34,6 +34,11 @@ comandos que es a su vez un proceso del sistema.
 - Arranque en hardware desnudo. No lo hay: por debajo se ejecuta una máquina
   virtual de Java. El sistema arranca en una máquina virtual, no en un
   procesador. Esta frase debe aparecer así en toda la documentación.
+  Que la máquina sea virtual no lo convierte en un simulador: no modela el
+  estado para dibujarlo, lo ejecuta. Los procesos son hilos reales de la JVM,
+  la memoria son bloques reales y el sistema de ficheros escribe bytes reales
+  en una imagen. Lo único que no es de relojería es el tiempo, que avanza por
+  ticks para que las medidas salgan iguales en cada ejecución.
 - Kernel escrito en C o ensamblador.
 - Aislamiento real de memoria entre procesos a nivel de hardware. La separación
   es lógica, impuesta por el traductor de direcciones del sistema.

@@ -344,7 +344,7 @@ suelta siempre. Una columna que creciera aquí sería la señal de una fuga.
 ### 7.4 Lo que estas cifras no dicen
 
 - **No son milisegundos.** No hay caché, ni predictor, ni memoria real. Sirven
-  para comparar entre sí dentro de este simulador; extrapolarlas a un procesador
+  para comparar entre sí dentro de este sistema; extrapolarlas a un procesador
   de verdad sería inventar.
 - **Todo está medido con cuanto 1**, que es el peor caso para el planificador:
   un cambio de contexto por instrucción. Con un cuanto mayor el reparto de ticks

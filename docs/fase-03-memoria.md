@@ -248,7 +248,7 @@ quien defienda el proyecto como decisiones, no como olvidos.
 
 ## 8. Siguiente fase
 
-La fase 4 es el sistema de ficheros: bloques en disco simulado, asignación
+La fase 4 es el sistema de ficheros: bloques en una imagen de disco, asignación
 indexada por defecto con contiguo y enlazado como alternativas, y los comandos
 de la terminal (`ls`, `mkdir`, `cat`, `write`, `rm`, `df`...). Después, la
 sincronización con cerrojos, semáforos y el banquero, y por último la interfaz

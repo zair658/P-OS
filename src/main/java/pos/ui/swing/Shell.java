@@ -34,7 +34,10 @@ import pos.ui.Snapshot;
 import pos.ui.SyncTable;
 
 /**
- * La ventana del simulador.
+ * La ventana del sistema.
+ *
+ * Lo que se ve no es una animacion de lo que pasaria: cada panel lee la foto
+ * que el nucleo acaba de tomar, y esa foto es el estado real.
  *
  * Seis vistas de la misma foto, una por pregunta. El resumen contesta "como va
  * esto"; procesos, "que hay vivo"; reparto, "quien usa la CPU y quien espera";
@@ -149,7 +152,7 @@ public final class Shell {
      * problema de que AWT se niegue a arrancar.
      */
     public JFrame frame() {
-        JFrame frame = new JFrame("P-OS · simulador de sistema operativo");
+        JFrame frame = new JFrame("P-OS · sistema operativo sobre la JVM");
         frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         frame.setContentPane(root);
         frame.setMinimumSize(new Dimension(980, 640));
@@ -534,7 +537,7 @@ public final class Shell {
 
             g2.setFont(Theme.sans(11f));
             g2.setColor(Theme.MUTED);
-            g2.drawString("simulador de sistema operativo", 74, h - 16);
+            g2.drawString("sistema operativo sobre la JVM", 74, h - 16);
 
             Snapshot shot = shown;
             String right = shot == null

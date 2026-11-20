@@ -2,10 +2,11 @@
 
 Sistema operativo didáctico en Java para la asignatura de Sistemas Operativos.
 
-No es un simulador que dibuja lo que pasaría: mantiene memoria real por bloques,
+Es un sistema operativo, no una maqueta: mantiene memoria real por bloques,
 procesos e hilos reales sobre hilos de la máquina virtual, un sistema de ficheros
 propio con su imagen en disco y una terminal que es un proceso más del sistema,
-planificado como cualquier otro.
+planificado como cualquier otro. Su máquina es la JVM: no arranca en hardware
+desnudo, y eso está declarado como límite en vez de disimulado.
 
 ![Resumen](capturas/07-resumen-final.png)
 
@@ -58,7 +59,7 @@ soluciones al lado, y la conclusión escrita.
 | `--medicion --csv` | Lo mismo, en formato de hoja de cálculo |
 | `--shell` | Una sesión de terminal sobre una imagen de ficheros |
 | `--interactivo` | La misma terminal, pero escribiendo desde el teclado |
-| `--ui` | La ventana del simulador |
+| `--ui` | La ventana del sistema |
 | `--captura [carpeta]` | Las mismas vistas en PNG, sin pantalla |
 | `--traza` | Añade la traza completa de la ejecución Round Robin |
 | `--version`, `--help` | Versión y lista de banderas |

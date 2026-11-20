@@ -235,7 +235,8 @@ public final class UiDemo {
         FileSystem fs = FileSystem.format(FsLayout.standard(BLOQUES, BLOQUE),
                 new AllocationMethod.Indexed(), new pos.alloc.BestFit());
         fs.create("/leeme.txt", """
-                P-OS: esto es un simulador, no un sistema operativo de verdad
+                P-OS: un sistema operativo, no una maqueta
+                corre sobre la maquina virtual de Java, que hace de hardware
                 el nucleo atiende llamadas, no ejecuta ordenes
                 la terminal es un proceso mas y pide permiso para todo
                 """);

@@ -114,7 +114,7 @@ Señalar en el segundo bloque que **los contadores avanzan mientras la terminal
 espera**: no tiene turno preferente. Y en el tercero, que cada orden es una suma
 de llamadas al sistema con su coste en tics.
 
-> «La terminal no es la interfaz del simulador: es un proceso. Si tuviera
+> «La terminal no es la interfaz del sistema: es un proceso. Si tuviera
 > privilegios de planificación, los contadores no avanzarían mientras espera
 > teclas. Avanzan.»
 

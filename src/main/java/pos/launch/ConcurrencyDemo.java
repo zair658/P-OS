@@ -33,8 +33,8 @@ import pos.sched.Scheduler;
  * Nota sobre el determinismo: con un unico testigo de turno, la carrera no
  * aparece por azar. Hace falta que el desalojo caiga dentro de la seccion
  * critica, y con cuanto de una instruccion cae siempre en el mismo sitio. Eso
- * permite ensenar el fallo a voluntad, que es justo lo que un simulador aporta
- * frente a una maquina real.
+ * permite ensenar el fallo a voluntad, que es justo lo que un reloj de ticks
+ * aporta frente a una maquina real.
  */
 public final class ConcurrencyDemo {
 
