@@ -1,6 +1,7 @@
 package pos.shell;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import pos.base.PosFault;
@@ -32,7 +33,7 @@ public final class Shell {
 
     private final SystemCalls system;
     private final CommandTable table;
-    private final List<String> history = new ArrayList<>();
+    private final List<String> history = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final JobTable jobs = new JobTable();
     private Tcb self;
     private long sleepTicks;
@@ -71,8 +72,17 @@ public final class Shell {
         return table;
     }
 
+    /**
+     * Lo escrito en la sesion, como vista viva de la lista.
+     *
+     * Es una vista y no una copia a proposito: el editor de linea la consulta
+     * desde su propio hilo en cuanto se pulsa una flecha, y con una copia veria
+     * el historial congelado en el momento en que se construyo. La lista de
+     * debajo admite lectura y escritura a la vez, que es lo que pasa aqui: la
+     * terminal anade lineas mientras el teclado las recorre.
+     */
     public List<String> history() {
-        return List.copyOf(history);
+        return Collections.unmodifiableList(history);
     }
 
     /** Tic actual del reloj simulado. */

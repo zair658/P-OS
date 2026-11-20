@@ -498,10 +498,11 @@ con la entrada de la siguiente.
 Operadores: `>` escribe, `>>` añade, `<` lee, `|` encadena. Un fallo en una
 etapa detiene la cadena e informa con código de salida distinto de cero.
 
-Historial de lo escrito, consultable con la orden `history`. No se navega con
-flechas ni hay autocompletado. La entrada puede ser un guion, que es lo que usan
-las pruebas y `--shell`, o el teclado, que es lo que usa `--interactivo`
-(apartado 12.4); en los dos casos el historial es una lista y no un editor.
+Historial de lo escrito, consultable con la orden `history`. Con `--interactivo`
+además se navega con las flechas y se completa con el tabulador: ahí hay un
+editor de línea de verdad (apartado 12.6). Con un guion, que es lo que usan las
+pruebas y `--shell`, no hay teclas sueltas que editar y el historial es solo una
+lista.
 
 ### 12.2 Familias de comandos
 
@@ -543,9 +544,11 @@ escritas, porque son decisiones y no pendientes:
    hay, pide dormir unos tics y suelta el turno. Ese rodeo no es adorno: si la
    terminal se quedara parada en un `readLine` dentro de su turno, los demás
    procesos no correrían mientras alguien piensa qué escribir, y el sistema
-   entero sería un solo hilo disfrazado. Es lo que hace `--interactivo`. El
-   historial existe (`history`) y sigue sin navegarse con flechas: eso pide un
-   editor de línea, no un lector de líneas.
+   entero sería un solo hilo disfrazado. Es lo que hace `--interactivo` cuando no
+   hay terminal donde poner el modo crudo, y es también lo que usa `--shell`.
+   Con terminal de verdad entra `TtyKeys`, que lee bytes en vez de líneas: es lo
+   único que permite separar una tecla de un texto, y sin eso no hay flechas,
+   Ctrl-C ni tabulador (apartado 12.6).
 3. **Las familias de comandos son cuatro, no seis.** Ficheros, texto y sistema,
    más el control de trabajos (apartado 12.5). Planificación, sincronización e
    interbloqueo se ven desde las demostraciones (`--traza`, `--concurrencia`,
@@ -598,17 +601,79 @@ Decisiones que conviene tener escritas, porque son límites y no olvidos:
 2. **Nadie se detiene a sí mismo.** El hilo que ejecuta la orden está dentro de
    su turno: si se marcara detenido, al devolver el turno el núcleo lo volvería a
    encolar y la orden se contradiría. Un proceso puede detener a otro.
-3. **No hay señales, así que no hay Ctrl-Z.** La entrada puede ser un guion
-   (`Console`) o el teclado (`--interactivo`), pero en los dos casos llegan líneas
-   enteras, no pulsaciones sueltas: un Ctrl-Z es una tecla, no una línea, y
-   atraparla pide un terminal en modo crudo. `stop` es la orden explícita que hace
-   lo que en un terminal de verdad hace el teclado. `fg` espera en lugar de
-   recibir un aviso asíncrono, que es justo lo que permite no necesitar
-   manejadores de señal.
+3. **Ctrl-Z llega, pero todavía no detiene nada.** Con el editor de línea
+   (apartado 12.6) las teclas se leen sueltas, así que un Ctrl-Z ya no se pierde
+   como texto. Lo que falta es la última pieza: que esa tecla detenga el trabajo
+   en primer plano. Es una orden de la sesión y no del teclado, y mientras no
+   esté, `stop %n` hace lo que en un terminal de verdad hace esa tecla. `fg`
+   espera en lugar de recibir un aviso asíncrono, que es justo lo que permite no
+   necesitar manejadores de señal.
 4. **Un detenido no es un averiado.** Al cerrar el sistema, un hilo que seguía
    detenido se anota como «seguía detenido al cerrar el sistema», no como
    interbloqueo: no espera nada. La traza lo dice con la palabra «en pausa»
    (`IDLE`) en vez de `DEADLOCK`.
+
+### 12.6 El editor de línea
+
+Con `--interactivo` delante de un terminal de verdad, la sesión edita la línea
+mientras se escribe. La pieza que lo hace posible es el **modo crudo**: el
+terminal deja de acumular bytes hasta el salto de línea y entrega cada pulsación
+tal cual llega. Se pide con `stty raw -echo` al arrancar, guardando antes
+`stty -g`, y se devuelve al estado guardado al salir — también si la sesión
+termina por un `Ctrl-D`, que es lo normal.
+
+Tres clases, cada una con un trabajo:
+
+| Clase | Qué hace | Qué no hace |
+| --- | --- | --- |
+| `Key` | una pulsación ya decidida: `UP`, `ENTER`, `CHAR`… | no toca bytes ni pantalla |
+| `LineEditor` | la lógica: búfer, cursor, historial, autocompletado | no conoce el terminal ni los flujos |
+| `TtyKeys` | lee bytes, los corta en teclas y pinta la línea | no decide qué significa una orden |
+
+La separación no es decorativa: `LineEditor` se prueba con teclas y nada más,
+sin terminal y sin hilos, y ahí están los 17 casos que cubren el historial, el
+cursor y el tabulador. `TtyKeys` se prueba dándole bytes, que es exactamente lo
+que llega de un terminal: `\u001b[A` es la flecha arriba y `ñ` son dos bytes.
+
+Teclas:
+
+| Tecla | Qué hace |
+| --- | --- |
+| imprimibles | se insertan donde esté el cursor, no al final |
+| `Enter` | entrega la línea |
+| flechas izquierda/derecha | mueven el cursor dentro de la línea |
+| flechas arriba/abajo | recorren el historial; al bajar del todo vuelve al borrador |
+| `Inicio` / `Fin`, o `Ctrl-A` / `Ctrl-E` | a los extremos de la línea |
+| `Retroceso` / `Suprimir` | borran antes y bajo el cursor |
+| `Ctrl-K` / `Ctrl-U` | borran hasta el final y la línea entera |
+| `Tab` | completa el nombre de la orden |
+| `Ctrl-C` | tira lo escrito y deja la línea vacía; no cierra la sesión |
+| `Ctrl-D` | con la línea vacía cierra la sesión; con texto, borra bajo el cursor |
+
+El tabulador completa contra los nombres de orden, que se copian al construir:
+el hilo que lee no toca el shell. Si solo hay una orden que empieza así, la
+escribe entera y añade un espacio. Si hay varias pero comparten más prefijo del
+escrito, alarga hasta donde coinciden. Y si no puede decidir, **las enseña**:
+callarse dejaría a quien escribe sin saber si el tabulador funcionó o no.
+
+El aviso `pos:/>` lo pinta el editor, pegado a la línea, porque es el único que
+sabe dónde está el cursor. Se lo da la terminal en su turno, cuando se queda sin
+nada que ejecutar: el aviso sale del directorio actual y eso es estado del
+sistema, no del teclado. Por eso el aviso no aparece antes de la respuesta del
+comando anterior.
+
+Dos límites que conviene tener escritos:
+
+1. **Sin `stty` no hay editor, y se nota.** En Windows no existe `stty`. Si se
+   pidiera el modo crudo de todos modos, el terminal seguiría en modo cocinado:
+   las flechas llegarían como basura y el eco se pintaría dos veces. Por eso
+   `TtyKeys.conTerminalCrudo` comprueba primero y devuelve `null` si no puede;
+   quien llama usa entonces la lectura por líneas. Una sesión sin flechas es
+   peor que una con flechas, pero mucho mejor que una rota.
+2. **El hilo que lee no ejecuta nada.** Solo encola. La terminal sigue mirando
+   la cola en su turno y durmiendo unos tics si está vacía, como con `LiveKeys`.
+   Si el hilo que lee ejecutara, el planificador se quedaría esperando a que
+   alguien pulse una tecla y el sistema entero sería un solo hilo disfrazado.
 
 ---
 

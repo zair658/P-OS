@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import pos.alloc.BestFit;
 import pos.fs.FileSystem;
@@ -13,10 +14,13 @@ import pos.mm.MemorySetup;
 import pos.proc.Pcb;
 import pos.proc.State;
 import pos.sched.RoundRobinScheduler;
+import pos.shell.Command;
+import pos.shell.Keys;
 import pos.shell.LiveKeys;
 import pos.shell.Output;
 import pos.shell.Shell;
 import pos.shell.Terminal;
+import pos.shell.TtyKeys;
 
 /**
  * Una sesion de terminal con teclado de verdad.
@@ -30,8 +34,16 @@ import pos.shell.Terminal;
  * sistema con reloj simulado no puede quedarse esperando a una persona dentro de
  * un turno de procesador, porque entonces no hay turnos: mientras alguien piensa
  * que escribir, no corre nadie. Por eso la lectura vive en otro hilo
- * ({@link LiveKeys}) y la terminal solo mira si ha llegado algo, durmiendo unos
- * tics entre mirada y mirada.
+ * ({@link TtyKeys} o {@link LiveKeys}) y la terminal solo mira si ha llegado algo,
+ * durmiendo unos tics entre mirada y mirada.
+ *
+ * Hay dos formas de leer y se eligen solas. Si hay un terminal delante, se lee
+ * tecla a tecla ({@link TtyKeys}): eso permite historial con las flechas, cortar
+ * con Ctrl-C y tabulador, porque cada tecla llega suelta. Si la entrada es una
+ * tuberia o un fichero, no hay terminal que configurar y se leen lineas enteras
+ * ({@link LiveKeys}), que es justo lo que esa entrada trae. La condicion no es un
+ * capricho: {@code System.console()} devuelve algo solo cuando el proceso tiene
+ * un terminal de verdad detras.
  *
  * El ritmo tambien es cosa de quien mira: el nucleo corre tan rapido como puede y
  * es este modo el que se toma unos milisegundos entre turno y turno para que la
@@ -89,10 +101,16 @@ public final class InteractiveShell {
         kernel.attachFilesystem(fs);
 
         Shell shell = new Shell(kernel.syscalls());
-        // Sin supplier de aviso: el aviso lo pinta la terminal cuando se queda
-        // esperando, que es cuando de verdad toca. Si lo pintara el hilo que lee
-        // saldria antes que la respuesta del comando anterior.
-        LiveKeys keys = new LiveKeys(System.in, kernel::clock);
+        // Con terminal delante se lee tecla a tecla, que es lo unico que permite
+        // flechas, Ctrl-C y tabulador. Sin terminal (tuberia, fichero) no hay
+        // modo crudo que poner, y sin stty (Windows) tampoco: en los dos casos se
+        // leen lineas, que es lo que la entrada sabe entregar.
+        Keys keys = System.console() == null ? null
+                : TtyKeys.conTerminalCrudo(System.in, out, kernel::clock,
+                        shell.history(), nombres(shell));
+        if (keys == null) {
+            keys = new LiveKeys(System.in, kernel::clock);
+        }
         Terminal terminal = new Terminal(shell, keys, kernel::clock, salida(out), false);
 
         Pcb proceso = kernel.createHostedProcess("terminal", terminal);
@@ -117,6 +135,16 @@ public final class InteractiveShell {
     /** La salida de las ordenes va tal cual a la pantalla. */
     private static Output salida(PrintStream out) {
         return out::print;
+    }
+
+    /**
+     * Los nombres de orden, para el tabulador.
+     *
+     * Se copian ahora, en este hilo, y no se consultan desde el hilo que lee: la
+     * tabla es estado del shell y el lector no tiene por que tocarla.
+     */
+    private static List<String> nombres(Shell shell) {
+        return shell.table().all().stream().map(Command::name).toList();
     }
 
     // ------------------------------------------------------------------

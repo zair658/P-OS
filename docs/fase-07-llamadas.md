@@ -359,8 +359,11 @@ La suite completa son 280 pruebas y ningún fallo.
   sigue recibiendo líneas con su tic, y eso es lo que mantiene las pruebas
   deterministas; al lado hay ahora `LiveKeys`, que lee del teclado en otro hilo y
   deja las líneas en una cola para no bloquear el turno de la terminal. Es lo que
-  hay detrás de `--interactivo`. Lo que sigue sin haber es un editor de línea:
-  llegan líneas enteras, así que no hay flechas ni Ctrl-Z.
+  hay detrás de `--interactivo` cuando no hay terminal donde poner el modo crudo.
+  Con terminal de verdad entra `TtyKeys`, que lee bytes y edita la línea: flechas,
+  historial, tabulador y Ctrl-C (apartado 12.6 de la arquitectura). Lo que sigue
+  sin haber es Ctrl-Z como señal: la tecla llega, pero detener el trabajo en
+  primer plano es una pieza aparte.
 
 ---
 

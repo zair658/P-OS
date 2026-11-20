@@ -29,6 +29,16 @@ public interface Keys {
         }
     }
 
+    /**
+     * Empieza a leer, si esta fuente necesita un hilo para ello.
+     *
+     * El guion de {@link Console} ya tiene todas sus lineas y no hace nada; el
+     * teclado, en cambio, arranca aqui su hilo de lectura.
+     */
+    default void start() {
+        // Sin hilo propio no hay nada que arrancar.
+    }
+
     /** Queda alguna linea por leer, o puede llegar. */
     boolean hasNext();
 
@@ -40,4 +50,27 @@ public interface Keys {
 
     /** Cuantas lineas quedan sin leer. */
     int pending();
+
+    /**
+     * Si esta fuente pinta su propio aviso.
+     *
+     * Con un guion o con lineas leidas del flujo, el aviso lo pinta la terminal:
+     * la linea llega entera y el aviso va delante, como una cabecera. Con un
+     * editor de linea no puede ser asi, porque el aviso tiene que estar pegado al
+     * texto que se esta escribiendo y moverse con el. Cuando esto devuelve true,
+     * la terminal deja de pintarlo y llama a {@link #prompt(String)}.
+     */
+    default boolean drawsPrompt() {
+        return false;
+    }
+
+    /**
+     * El aviso que toca ahora, para las fuentes que lo pintan.
+     *
+     * Lo llama el nucleo en su turno, nunca el hilo lector: el aviso depende del
+     * directorio actual, que es estado del sistema.
+     */
+    default void prompt(String text) {
+        // Las fuentes que no pintan no tienen nada que hacer con esto.
+    }
 }

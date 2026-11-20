@@ -75,7 +75,7 @@ public final class Terminal implements HostedTask {
         // El aviso se pinta solo cuando hay pantalla y nadie va a repetir la
         // linea: si la linea no se repite, alguien tiene que ensenar donde se
         // escribe, y ese alguien es la terminal, que sabe cuando espera.
-        this.livePrompt = screen != null && !echoLine;
+        this.livePrompt = screen != null && !echoLine && !keys.drawsPrompt();
         // Sin pantalla, la salida es el propio transcript: lo de siempre.
         this.out = screen == null ? transcript : tee(transcript, screen);
     }
@@ -116,7 +116,12 @@ public final class Terminal implements HostedTask {
             // este es el momento de pintar el aviso: se hace aqui, y no en el
             // hilo que lee, para que el aviso salga despues de la respuesta del
             // comando anterior y no antes.
-            if (livePrompt && !promptShown) {
+            if (keys.drawsPrompt()) {
+                // El editor de linea pinta el aviso pegado a lo que se escribe.
+                // Se le da aqui, en el turno del nucleo, porque el aviso sale
+                // del directorio actual y eso es estado del sistema.
+                keys.prompt(shell.prompt());
+            } else if (livePrompt && !promptShown) {
                 out.print(shell.prompt());
                 promptShown = true;
             }

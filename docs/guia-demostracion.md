@@ -180,10 +180,10 @@ es que no hay control de memoria física directa, y se asume.
 
 **¿Cómo se para un proceso sin señales?** Con una orden explícita, `stop`, que
 es una llamada al sistema. Un terminal de verdad para con Ctrl-Z porque hay
-señales; aquí la entrada llega en líneas enteras, no en pulsaciones sueltas, así
-que la orden hace de señal. `fg` espera al proceso en vez de recibir un aviso
-asíncrono: por eso no hacen falta manejadores. Esto vale igual en `--shell` y en
-`--interactivo`: un Ctrl-Z es una tecla, no una línea.
+señales; aquí no hay manejadores de señal, así que la orden hace de señal. `fg`
+espera al proceso en vez de recibir un aviso asíncrono. En `--interactivo` las
+teclas ya llegan sueltas y el Ctrl-Z no se pierde, pero todavía no está conectado
+a la tabla de trabajos: hoy para el proceso en primer plano se usa `stop %n`.
 
 **¿Qué se descartó?** Está escrito en `docs/arquitectura.md`, con el motivo. El
 caso que más se pregunta es el gestor de huecos propio: el castigo proporcional

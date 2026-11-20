@@ -145,6 +145,16 @@ class TerminalVivaTest {
         terminal.shell().attach(proceso.threads().get(0));
         if (keys instanceof LiveKeys vivas) {
             vivas.start();
+            // Hay que dejar que el guion entero llegue a la cola antes de arrancar
+            // el nucleo. Si el nucleo empieza a mirar antes, se encuentra la cola
+            // vacia a media lectura, se cree que hay alguien pensando que escribir
+            // y pinta un aviso. En una tuberia ya escrita eso no pasa, y por eso
+            // los tests que cuentan avisos tienen que fijar el momento.
+            long limite = System.currentTimeMillis() + 5000;
+            while (!vivas.terminado() && System.currentTimeMillis() < limite) {
+                Thread.sleep(1);
+            }
+            assertTrue(vivas.terminado(), "el guion no llego a leerse entero");
         }
         Thread hilo = new Thread(kernel::run, "nucleo");
         hilo.setDaemon(true);

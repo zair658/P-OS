@@ -20,7 +20,7 @@ Requiere **Java 21** y **Maven**. No hay dependencias de ejecución: solo JUnit
 para las pruebas.
 
 ```bash
-mvn test                 # 347 pruebas; imprime las tablas comparativas
+mvn test                 # 396 pruebas; imprime las tablas comparativas
 mvn package              # genera target/p-os-0.1.0-SNAPSHOT.jar
 ```
 
@@ -58,7 +58,7 @@ soluciones al lado, y la conclusión escrita.
 | `--medicion` | Coste en ticks de los tres mecanismos de espera, medido |
 | `--medicion --csv` | Lo mismo, en formato de hoja de cálculo |
 | `--shell` | Una sesión de terminal sobre una imagen de ficheros |
-| `--interactivo` | La misma terminal, pero escribiendo desde el teclado |
+| `--interactivo` | La misma terminal, pero escribiendo desde el teclado, con historial, tabulador y edición de línea |
 | `--ui` | La ventana del sistema |
 | `--captura [carpeta]` | Las mismas vistas en PNG, sin pantalla |
 | `--traza` | Añade la traza completa de la ejecución Round Robin |
@@ -70,6 +70,13 @@ soluciones al lado, y la conclusión escrita.
 demostración más. `--interactivo` es la misma terminal con el teclado de verdad:
 escribes una orden, la ejecutas, ves la respuesta y sigues, sin cerrar la sesión
 entre orden y orden.
+
+Esa sesión edita la línea mientras la escribes, como cualquier terminal: flechas
+arriba y abajo para el historial, izquierda y derecha para moverse dentro de lo
+escrito, `Tab` para completar el nombre de la orden, `Ctrl-C` para tirar la línea
+y `Ctrl-D` para cerrar. El modo crudo del terminal se pide al empezar y se
+devuelve al salir; si el sistema no lo tiene (Windows), la sesión sigue
+funcionando pero leyendo líneas enteras.
 
 ```
 java -jar target/p-os-0.1.0-SNAPSHOT.jar --interactivo
@@ -141,14 +148,14 @@ Los paquetes siguen esa separación:
 | `pos.proc`, `pos.kernel`, `pos.sched` | Procesos, hilos, intérprete, núcleo y planificadores |
 | `pos.fs` | Sistema de ficheros, imagen por bloques y métodos de asignación |
 | `pos.sync` | Cerrojos, semáforos, variables de condición y monitores |
-| `pos.sys`, `pos.shell` | Llamadas al sistema, descriptores y terminal |
+| `pos.sys`, `pos.shell` | Llamadas al sistema, descriptores, terminal y el editor de línea del teclado |
 | `pos.ui`, `pos.ui.swing` | Fotos del estado, modelos de tabla y la ventana |
 | `pos.launch` | Punto de entrada y una demostración por fase |
 
 ## Estado
 
-Ocho fases cerradas. El código son unas 19 300 líneas en 113 ficheros, y las
-pruebas 6 300 en 24 ficheros: 46 clases contando las anidadas y 347 casos
+Ocho fases cerradas. El código son unas 20 700 líneas en 119 ficheros, y las
+pruebas 7 100 en 27 ficheros: 60 clases contando las anidadas y 396 casos
 contando los parametrizados.
 
 | Fase | Contenido | Documento |

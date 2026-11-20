@@ -97,6 +97,18 @@ public final class LiveKeys implements Keys {
     }
 
     /**
+     * Si el lector ya cerro, es decir, si la entrada se agoto.
+     *
+     * Sirve para distinguir "todavia puede llegar algo" de "esto era todo". Las
+     * pruebas lo usan para arrancar el nucleo con el guion ya entero en la cola;
+     * si arrancara antes, la terminal se encontraria la cola vacia a media
+     * lectura y no habria forma de saber que no estaba esperando a nadie.
+     */
+    boolean terminado() {
+        return closed;
+    }
+
+    /**
      * Cuando llega la proxima linea.
      *
      * Si ya hay una en la cola, llego ahora: se devuelve el tic actual para que
