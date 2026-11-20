@@ -1,100 +1,134 @@
 # P-OS
 
-Sistema operativo didáctico escrito en Java, para la asignatura de Sistemas
-Operativos. No simula desde fuera: mantiene memoria real por bloques, procesos e
-hilos reales sobre hilos de la máquina virtual, un sistema de ficheros propio y
-una terminal que es un proceso más del sistema.
+Sistema operativo didáctico en Java para la asignatura de Sistemas Operativos.
+
+No es un simulador que dibuja lo que pasaría: mantiene memoria real por bloques,
+procesos e hilos reales sobre hilos de la máquina virtual, un sistema de ficheros
+propio con su imagen en disco y una terminal que es un proceso más del sistema,
+planificado como cualquier otro.
+
+![Resumen](capturas/07-resumen-final.png)
+
+Las seis vistas de la ventana son la misma foto del sistema mirada desde seis
+preguntas distintas. Arriba, el resumen: procesador, mapa de la memoria física y
+evolución en el tiempo.
+
+## Arrancar
+
+Requiere **Java 21** y **Maven**. No hay dependencias de ejecución: solo JUnit
+para las pruebas.
+
+```bash
+mvn test                 # 286 pruebas; imprime las tablas comparativas
+mvn package              # genera target/p-os-0.1.0-SNAPSHOT.jar
+```
+
+El jar se puede lanzar de dos formas, según lo que se quiera ver:
+
+```bash
+java -jar target/p-os-0.1.0-SNAPSHOT.jar --ui        # la ventana, con el sistema corriendo dentro
+java -jar target/p-os-0.1.0-SNAPSHOT.jar             # informe de texto: memoria y planificadores
+```
+
+Sin pantalla (servidor, contenedor, CI) la ventana no arranca, pero las vistas se
+pueden generar como imágenes:
+
+```bash
+java -jar target/p-os-0.1.0-SNAPSHOT.jar --captura capturas
+```
+
+Eso escribe ocho PNG en la carpeta indicada sin necesitar servidor gráfico: los
+paneles se construyen, se les da tamaño y se pintan sobre una imagen.
+
+## Las demostraciones
+
+Cada fase tiene una demostración que se imprime en la terminal y se puede
+reproducir sin tocar código. Todas usan el mismo formato: mismo problema, tres
+soluciones al lado, y la conclusión escrita.
+
+| Bandera | Qué demuestra |
+|---|---|
+| *(sin argumentos)* | Diagnóstico de la memoria física y comparación de planificadores |
+| `--memoria` | Los tres esquemas de memoria: contiguo, paginado y segmentado |
+| `--swap` | Paginación por demanda, área de intercambio y FIFO / LRU / OPT |
+| `--disco` | Los tres métodos de asignación de ficheros sobre la misma imagen |
+| `--concurrencia` | La carrera que pierde actualizaciones y el cerrojo que la arregla |
+| `--sincronizacion` | Semáforos, productor y consumidor, y monitores con condición |
+| `--medicion` | Coste en ticks de los tres mecanismos de espera, medido |
+| `--medicion --csv` | Lo mismo, en formato de hoja de cálculo |
+| `--shell` | Una sesión de terminal sobre una imagen de ficheros |
+| `--ui` | La ventana del simulador |
+| `--captura [carpeta]` | Las mismas vistas en PNG, sin pantalla |
+| `--traza` | Añade la traza completa de la ejecución Round Robin |
+| `--version`, `--help` | Versión y lista de banderas |
+
+## Cómo está hecho
+
+- **No simula el estado, lo tiene.** Un proceso de P-OS es un objeto con su
+  bloque de control, sus hilos y su memoria; un hilo de P-OS corre sobre un hilo
+  real de la JVM cuando le toca el procesador. Cuando dos hilos se pelean por un
+  contador, la carrera es de verdad y se pierden actualizaciones de verdad.
+- **El procesador es explícito.** Hay un único punto donde se decide a quién le
+  toca: el planificador. Los hilos de la JVM se crean, pero no avanzan hasta que
+  el núcleo se lo permite. Eso hace el sistema reproducible.
+- **Cada mecanismo es una interfaz.** Gestores de huecos, traductores de
+  direcciones, planificadores y métodos de asignación comparten contrato, así que
+  el mismo código corre con tres políticas y las tablas comparan lo mismo.
+- **Lo que se dibuja es una copia.** La ventana no lee el núcleo mientras corre:
+  recibe fotos inmutables y las reparte. Nunca ve un estado a medias, y refrescar
+  es barato porque una foto repetida no toca nada.
+
+Los paquetes siguen esa separación:
+
+| Paquete | Contenido |
+|---|---|
+| `pos.phys`, `pos.alloc` | Memoria física, mapa de marcos y gestores de huecos |
+| `pos.mm`, `pos.addr` | Memoria virtual, esquemas de asignación y traducción de direcciones |
+| `pos.proc`, `pos.kernel`, `pos.sched` | Procesos, hilos, intérprete, núcleo y planificadores |
+| `pos.fs`, `pos.disk` | Sistema de ficheros, imagen por bloques y métodos de asignación |
+| `pos.sync` | Cerrojos, semáforos, variables de condición y monitores |
+| `pos.sys`, `pos.shell` | Llamadas al sistema, descriptores y terminal |
+| `pos.ui`, `pos.ui.swing` | Fotos del estado, modelos de tabla y la ventana |
 
 ## Estado
 
-| Fase | Contenido | Estado |
+Ocho fases cerradas. El código son unas 17 000 líneas y las pruebas 5 100, en 42
+clases de prueba.
+
+| Fase | Contenido | Documento |
 |---|---|---|
-| 0 | Entorno de compilación y esqueleto del proyecto | terminada |
-| 1 | Memoria física por bloques y gestores de huecos | terminada |
-| 2 | Procesos, hilos, intérprete y planificación FCFS / Round Robin | terminada |
-| 3 | Memoria virtual: contiguo, paginado y segmentado | terminada |
-| 3b | Páginas por demanda, área de intercambio y políticas FIFO / LRU / OPT | terminada |
-| 4 | Sistema de ficheros, imagen por bloques y tres métodos de asignación | terminada |
-| 5 | Cerrojos, exclusión mutua y detección de interbloqueo | terminada |
-| 6 | Semáforos, variables de condición y monitores | terminada |
-| 7 | Llamadas al sistema, descriptores y terminal | terminada |
+| 0 | Entorno de compilación y esqueleto | — |
+| 1 | Memoria física por bloques y gestores de huecos | [fase-01](docs/fase-01-memoria.md) |
+| 2 | Procesos, hilos, intérprete, FCFS y Round Robin | [fase-02](docs/fase-02-procesos.md) |
+| 3 | Memoria virtual: contiguo, paginado y segmentado | [fase-03](docs/fase-03-memoria.md) |
+| 3b | Páginas por demanda, intercambio y reemplazo | [fase-03b](docs/fase-03b-intercambio.md) |
+| 4 | Sistema de ficheros y tres métodos de asignación | [fase-04](docs/fase-04-disco.md) |
+| 5 | Cerrojos, exclusión mutua e interbloqueo | [fase-05](docs/fase-05-concurrencia.md) |
+| 6 | Semáforos, condiciones y monitores | [fase-06](docs/fase-06-sincronizacion.md) |
+| 7 | Llamadas al sistema, descriptores y terminal | [fase-07](docs/fase-07-llamadas.md) |
+| 8 | Ventana con seis vistas y capturas sin pantalla | [fase-08](docs/fase-08-interfaz.md) |
 
-Las fases restantes están descritas en `docs/arquitectura.md`.
+## Las vistas
 
-## Cómo compilar y ejecutar
+El mapa de la memoria física es la vista que justifica la paginación: una tabla
+diría «16 unidades en 4 tramos», que es correcto y no se entiende. Aquí se ve que
+esas unidades no están juntas y que la memoria libre queda partida en trozos.
 
-Requiere Java 21 y Maven. En este equipo ya están instalados y se cargan con:
-
-```bash
-. ~/.local/env-pos.sh
-```
-
-Después:
-
-```bash
-mvn test                     # pruebas; imprime las tablas comparativas
-mvn package                  # genera el ejecutable
-java -jar target/p-os-0.1.0-SNAPSHOT.jar
-java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --memoria
-java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --swap
-java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --disco
-java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --concurrencia
-java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --sincronizacion
-java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --medicion
-java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --medicion --csv
-java -cp target/p-os-0.1.0-SNAPSHOT.jar pos.launch.Main --shell
-```
-
-`--memoria` ejecuta la demostración de los tres esquemas de memoria: el mismo
-programa con los tres, la tabla de traducción de cada uno y la prueba de
-fragmentación. `--disco` hace lo mismo con el sistema de ficheros: los tres
-métodos de asignación sobre el mismo contenido, el mismo hueco pedido por los
-tres y una imagen estropeada que se niega a montar. `--swap` hace lo mismo con
-la paginación por demanda: la misma traza con FIFO, LRU y OPT, la anomalía de
-Belady reproducida, un proceso con más páginas que marcos que recupera sus datos
-del área de intercambio, y el fichero `/intercambio` mirado por dentro.
-`--concurrencia` hace lo mismo con la sincronización: la carrera entre dos hilos
-que pierde actualizaciones bajo Round Robin, la traza del cerrojo que la arregla
-y un abrazo mortal entre dos hilos que el sistema detecta en vez de colgarse.
-`--sincronizacion` hace lo mismo con los mecanismos de espera: el mismo contador
-protegido con cerrojo y con semáforo, un productor y un consumidor que se dan el
-turno con dos semáforos sin gastar CPU, y un monitor con variable de condición
-donde se ve que el despertado tiene que volver a pedir el cerrojo. `--medicion`
-no enseña mecanismos: cronometra los tres con el mismo problema y saca la tabla
-de costes en ticks, con la columna de resultado al lado para que no se confunda
-«más barato» con «correcto»; `--medicion --csv` la da en formato de hoja de
-cálculo. `--shell` monta una imagen de ficheros y abre una sesión de terminal
-sobre ella: ordenes con tuberías y redirecciones, dos procesos de cálculo
-compartiendo procesador con la sesión, y la tabla de llamadas que el núcleo
-atendió, con su coste en tics. El arranque sin argumentos compara los
-planificadores.
+![Memoria](capturas/04-memoria.png)
 
 ## Documentación
 
-- `docs/arquitectura.md`: documento de arquitectura, con las decisiones y su
-  motivo, el modelo de ejecución y las fases.
-- `docs/fase-01-memoria.md`: qué se implementó en la primera fase, con las
-  mediciones de los gestores de huecos.
-- `docs/fase-02-procesos.md`: qué se implementó en la segunda, el modelo de
-  ejecución y la comparación de planificadores.
-- `docs/fase-03-memoria.md`: qué se implementó en la tercera, los tres esquemas
-  de memoria con sus tablas de traducción y la medición de la fragmentación.
-- `docs/fase-03b-intercambio.md`: qué añadió la fase 3b, la paginación por
-  demanda, el área de intercambio como fichero y la comparación de políticas.
-- `docs/fase-04-disco.md`: qué se implementó en la cuarta, la imagen por bloques,
-  los tres métodos de asignación y la verificación al montar.
-- `docs/fase-05-concurrencia.md`: qué añadió la quinta, los cerrojos con cola de
-  espera, la cesión directa, la detección de ciclos y la demostración de la
-  carrera.
-- `docs/fase-06-sincronizacion.md`: qué añadió la sexta, los semáforos, las
-  variables de condición atadas a un cerrojo, la readquisición al despertar, la
-  comparación entre ambos mecanismos y la tabla de costes medida con `--medicion`.
-- `docs/fase-07-llamadas.md`: qué añadió la séptima, la frontera de las llamadas
-  al sistema, la tabla de descriptores, la terminal como proceso, el intérprete
-  de líneas con tuberías y la contabilidad por código.
+- [`docs/arquitectura.md`](docs/arquitectura.md): el documento de arquitectura.
+  Decisiones y su motivo, modelo de ejecución, fases y lo que se descartó.
+- [`docs/guia-demostracion.md`](docs/guia-demostracion.md): guion de cinco
+  minutos para enseñar el sistema en orden, con qué señalar en cada paso.
+- Un documento por fase, enlazado en la tabla de arriba, con lo que se implementó
+  y las mediciones que lo sostienen. No solo lo que salió bien: también las
+  decisiones que se revirtieron y por qué.
 
 ## Convenciones
 
 Comentarios en español y sin emojis. Nombres de clases y métodos en inglés, con
-los términos de la asignatura. Los textos que ve el usuario, en español, salvo
-los nombres de comando.
+los términos de la asignatura. Lo que ve el usuario, en español, salvo los
+nombres de comando. Las pruebas se escriben antes que la demostración, y ninguna
+tabla del README lleva cifras que no salgan de una ejecución.

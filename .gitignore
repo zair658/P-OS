@@ -39,5 +39,6 @@ token
 Thumbs.db
 desktop.ini
 
-# Capturas generadas por --captura: se regeneran, no se versionan.
-capturas/
+# Capturas generadas por --captura. Se regeneran solas, pero se versionan porque
+# el README las enlaza y en GitHub hace falta el fichero para verlas.
+# Se pueden regenerar en cualquier momento con: java -jar ... --captura capturas
