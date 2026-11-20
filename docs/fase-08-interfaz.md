@@ -100,9 +100,14 @@ Con eso, `java -Djava.awt.headless=true ... UiLaunch --captura capturas` genera
 las ocho imágenes con `BufferedImage` y `paint`, sin X11 y sin nadie mirando.
 
 Las seis primeras fotos son del **mismo instante**: se deja correr el escenario
-con una pausa corta y, al llegar a un reloj con vida, se congela subiendo la
+con una pausa corta y, al llegar al instante que interesa, se congela subiendo la
 pausa (el freno vive en `UiFeed`, no en el núcleo). Si cada captura fuese de un
 momento distinto, el conjunto no se podría leer como una sola foto.
+
+Ese instante ya no es un reloj fijo sino la primera foto con un **trabajo
+detenido**: es lo único que se ve durante unos turnos y justo lo que la fase de
+trabajos tiene que enseñar. Con un reloj fijo, las capturas podían caer fuera de
+esa ventana y salir sin ningún «detenido» en la tabla.
 
 Las dos últimas son del cierre: todo terminado y la memoria libre.
 
