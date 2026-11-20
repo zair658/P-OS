@@ -43,7 +43,8 @@ public final class Assembler {
      * El resto solo admite uno, y se comprueba antes del switch para que el
      * mensaje de error no dependa de por donde entre la instruccion.
      */
-    private static final Set<String> DOS_ARGUMENTOS = Set.of("SEM_INIT", "COND_WAIT");
+    private static final Set<String> DOS_ARGUMENTOS = Set.of("SEM_INIT", "COND_WAIT",
+            "RES_CLAIM", "RES_TAKE", "RES_GIVE");
 
     private Assembler() {
         // clase de utilidad
@@ -142,6 +143,15 @@ public final class Assembler {
                     nombre(program, rawLine, argument, "condicion"));
             case "COND_BROADCAST" -> new Instruction.CondBroadcast(
                     nombre(program, rawLine, argument, "condicion"));
+            case "RES_CLAIM" -> new Instruction.ResClaim(
+                    nombre(program, rawLine, argument, "recurso"),
+                    positivo(program, rawLine, second, "RES_CLAIM"));
+            case "RES_TAKE" -> new Instruction.ResTake(
+                    nombre(program, rawLine, argument, "recurso"),
+                    positivo(program, rawLine, second, "RES_TAKE"));
+            case "RES_GIVE" -> new Instruction.ResGive(
+                    nombre(program, rawLine, argument, "recurso"),
+                    positivo(program, rawLine, second, "RES_GIVE"));
             default -> throw error(program, rawLine, "instruccion desconocida '" + mnemonic + "'");
         };
     }
@@ -213,6 +223,16 @@ public final class Assembler {
             throw error(program, line, "SLEEP necesita un numero mayor que cero");
         }
         return value;
+    }
+
+    /** Segundo argumento numerico que tiene que ser mayor que cero. */
+    private static int positivo(String program, String line, String argument, String mnemonic) {
+        String value = segundo(program, line, argument, mnemonic);
+        int number = number(program, line, value);
+        if (number <= 0) {
+            throw error(program, line, mnemonic + " necesita un numero mayor que cero");
+        }
+        return number;
     }
 
     private static int target(String program, String line, String argument,

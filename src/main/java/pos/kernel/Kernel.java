@@ -25,6 +25,7 @@ import pos.proc.Tcb;
 import pos.proc.TurnOutcome;
 import pos.sched.Scheduler;
 import pos.sched.SchedulingDecision;
+import pos.sync.Banker;
 import pos.sync.ConditionManager;
 import pos.sync.LockManager;
 import pos.sync.SemaphoreManager;
@@ -70,6 +71,7 @@ public final class Kernel implements ExecutionHost {
     private final LockManager locks = new LockManager();
     private final SemaphoreManager semaphores = new SemaphoreManager();
     private final ConditionManager conditions = new ConditionManager();
+    private final Banker banker = new Banker();
     private final SystemCalls syscalls = new SystemCalls(this);
     private final Map<Integer, List<Integer>> dumps = new LinkedHashMap<>();
 
@@ -361,6 +363,17 @@ public final class Kernel implements ExecutionHost {
                     trace.add(clock, EventKind.LOCK_ORPHAN, thread.id(),
                             "termina sin liberar el cerrojo '" + held + "'");
                 }
+                // Los recursos del banquero, en cambio, se devuelven solos: son
+                // del proceso y no tienen duenyo que los ceda. Dejarlos
+                // asignados a un muerto haria que el banquero los contara como
+                // ocupados para siempre y acabaria negando peticiones por un
+                // proceso que ya no existe.
+                String held = banker.heldSummary(thread.process().id());
+                if (!held.isEmpty()) {
+                    trace.add(clock, EventKind.RES_GIVE, thread.id(),
+                            "termina y devuelve " + held);
+                }
+                banker.releaseAll(thread.process().id());
                 Pcb process = thread.process();
                 if (ProcessFactory.closeIfEmpty(process)) {
                     captureFinalMemory(process);
@@ -459,6 +472,7 @@ public final class Kernel implements ExecutionHost {
         woken.addAll(locks.drainGranted());
         woken.addAll(semaphores.drainGranted());
         woken.addAll(conditions.drainGranted());
+        woken.addAll(banker.drainGranted());
 
         for (Tcb thread : woken) {
             String name = thread.blockedOn();
@@ -501,6 +515,9 @@ public final class Kernel implements ExecutionHost {
                     + " y tiene " + semaphores.waitingCount(name) + " hilo(s) en la cola";
             case CONDICION -> "duerme en la condicion '" + name
                     + "' y su cerrojo quedo libre";
+            // El motivo lo redacta el banquero, que es el unico que sabe si
+            // falta genero o si sobra pero no se puede dar.
+            case RECURSO -> banker.pendingReason(thread);
             default -> "espera sin motivo conocido";
         };
     }
@@ -511,6 +528,7 @@ public final class Kernel implements ExecutionHost {
             case CERROJO -> "obtiene el cerrojo '" + name + "' y vuelve a listos";
             case SEMAFORO -> "obtiene un permiso de '" + name + "' y vuelve a listos";
             case CONDICION -> "vuelve a listos con el cerrojo de la condicion '" + name + "'";
+            case RECURSO -> "obtiene '" + name + "' del banquero y vuelve a listos";
             default -> "vuelve a listos";
         };
     }
@@ -566,6 +584,7 @@ public final class Kernel implements ExecutionHost {
                 List<String> stuck = new ArrayList<>();
                 stuck.addAll(semaphores.describeBlocked());
                 stuck.addAll(conditions.describeBlocked());
+                stuck.addAll(banker.describeBlocked());
                 if (stuck.isEmpty()) {
                     trace.add(clock, EventKind.DEADLOCK, "nucleo",
                             "no queda ningun hilo capaz de despertar");
@@ -636,6 +655,8 @@ public final class Kernel implements ExecutionHost {
             case CERROJO -> "bloqueado para siempre esperando el cerrojo '" + name + "'";
             case SEMAFORO -> "bloqueado para siempre esperando un permiso de '" + name + "'";
             case CONDICION -> "bloqueado para siempre esperando la condicion '" + name + "'";
+            case RECURSO -> "bloqueado para siempre esperando '" + name
+                    + "', que el banquero no concede";
             default -> "seguia pendiente al cerrar el sistema";
         };
     }
@@ -706,6 +727,48 @@ public final class Kernel implements ExecutionHost {
                 ? "devuelve un permiso a '" + name + "', queda en "
                         + semaphores.valueOf(name)
                 : "devuelve un permiso a '" + name + "' y se lo cede a " + next.id());
+    }
+
+    @Override
+    public void claimResource(Tcb thread, String resource, int maximum) {
+        banker.claim(thread, resource, maximum);
+        trace.add(clock, EventKind.RES_CLAIM, thread.id(), "el proceso '" + thread.process().name()
+                + "' declara un maximo de " + maximum + " de '" + resource + "'");
+    }
+
+    @Override
+    public boolean takeResource(Tcb thread, String resource, int amount) {
+        Banker.Answer answer = banker.request(thread, resource, amount);
+        switch (answer.verdict()) {
+            case GRANTED -> {
+                trace.add(clock, EventKind.RES_TAKE, thread.id(),
+                        "toma " + amount + " de '" + resource + "': " + answer.reason());
+                return true;
+            }
+            case WAIT -> {
+                // El hilo se apunta como bloqueado por recurso. El banquero ya
+                // guardo la peticion; el nucleo solo tiene que sacarlo de la
+                // cola de listos y devolverlo cuando la peticion pase el examen.
+                thread.setBlockedOn(resource);
+                thread.setBlockedKind(BlockKind.RECURSO);
+                trace.add(clock, EventKind.RES_WAIT, thread.id(),
+                        "no obtiene " + amount + " de '" + resource + "': " + answer.reason());
+                return false;
+            }
+            case EXCEEDS_MAX -> throw new PosFault(thread.id() + ": " + answer.reason());
+        }
+        throw new PosFault(thread.id() + ": el banquero devolvio un veredicto no previsto");
+    }
+
+    @Override
+    public void giveResource(Tcb thread, String resource, int amount) {
+        List<Tcb> woken = banker.release(thread, resource, amount);
+        trace.add(clock, EventKind.RES_GIVE, thread.id(),
+                woken.isEmpty()
+                        ? "devuelve " + amount + " de '" + resource + "', quedan "
+                                + banker.availableOf(resource)
+                        : "devuelve " + amount + " de '" + resource + "' y su peticion ya cabe para "
+                                + String.join(", ", woken.stream().map(Tcb::id).toList()));
     }
 
     @Override
@@ -886,5 +949,23 @@ public final class Kernel implements ExecutionHost {
     /** Tabla de variables de condicion del sistema. */
     public ConditionManager conditions() {
         return conditions;
+    }
+
+    /** Banquero: reparto de recursos con varias instancias y estado seguro. */
+    public Banker banker() {
+        return banker;
+    }
+
+    /**
+     * Declara un recurso del sistema y cuantas instancias tiene.
+     *
+     * Lo hace el nucleo y no un proceso porque los recursos pertenecen a la
+     * maquina: un proceso que pudiera declarar sus propios recursos podria
+     * declararse los que quisiera y el banquero dejaria de vigilar nada.
+     */
+    public void declareResource(String name, int instances) {
+        banker.declareResource(name, instances);
+        trace.add(clock, EventKind.BOOT, "nucleo",
+                "declara el recurso '" + name + "' con " + instances + " instancia(s)");
     }
 }

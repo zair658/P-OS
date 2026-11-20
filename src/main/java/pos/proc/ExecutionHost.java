@@ -45,6 +45,22 @@ public interface ExecutionHost {
     /** Devuelve un permiso al semaforo o despierta al primero que espera. */
     void postSemaphore(Tcb tcb, String name);
 
+    /** Anota el maximo que el proceso promete pedir de un recurso. */
+    void claimResource(Tcb tcb, String resource, int maximum);
+
+    /**
+     * Intenta tomar instancias de un recurso, con el banquero como arbitro.
+     *
+     * @return true si se conceden y el hilo sigue; false si la peticion dejaria
+     *         el sistema en un estado inseguro, en cuyo caso el hilo ya queda
+     *         apuntado para ser atendido cuando alguien devuelva lo suficiente
+     *         y el interprete debe pedir el bloqueo
+     */
+    boolean takeResource(Tcb tcb, String resource, int amount);
+
+    /** Devuelve instancias al monton y despierta a quien pudiera esperarlas. */
+    void giveResource(Tcb tcb, String resource, int amount);
+
     /**
      * Ata un hilo a una condicion y lo deja dormido.
      *

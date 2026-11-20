@@ -16,7 +16,7 @@ public final class SyncTable implements Table {
 
     @Override
     public String title() {
-        return "Cerrojos, semaforos y condiciones";
+        return "Cerrojos, semaforos, condiciones y recursos";
     }
 
     @Override
@@ -51,7 +51,24 @@ public final class SyncTable implements Table {
                     String.valueOf(condition.waiting())
             });
         }
+        for (Snapshot.ResRow resource : shot.sync().resources()) {
+            rows.add(new String[] {
+                    "recurso",
+                    resource.name(),
+                    situacion(resource),
+                    String.valueOf(resource.waiting())
+            });
+        }
         return rows;
+    }
+
+    /** "2 de 3 libres" y, si alguien tiene alguna, quienes y cuantas. */
+    private static String situacion(Snapshot.ResRow resource) {
+        String text = resource.available() + " de " + resource.capacity() + " libres";
+        if (!resource.holders().isEmpty()) {
+            text += "  ·  tiene " + resource.holders();
+        }
+        return text;
     }
 
     @Override
@@ -70,9 +87,12 @@ public final class SyncTable implements Table {
         for (Snapshot.CondRow row : sync.conditions()) {
             waiting += row.waiting();
         }
+        for (Snapshot.ResRow row : sync.resources()) {
+            waiting += row.waiting();
+        }
         String text = sync.locks().size() + " cerrojos  ·  " + sync.semaphores().size()
                 + " semaforos  ·  " + sync.conditions().size() + " condiciones  ·  "
-                + waiting + " esperas";
+                + sync.resources().size() + " recursos  ·  " + waiting + " esperas";
         if (sync.deadlock() != null) {
             text += "  ·  INTERBLOQUEO: " + sync.deadlock();
         }

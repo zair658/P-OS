@@ -21,6 +21,8 @@ class InterpreterTest {
         private final List<String> negados = new ArrayList<>();
         private final List<String> semaforosCreados = new ArrayList<>();
         private final List<String> condicionesUsadas = new ArrayList<>();
+        private final List<String> maximos = new ArrayList<>();
+        private int libres = 10;
         private Tcb duenyo;
         private int permisos;
         private long clock;
@@ -90,6 +92,28 @@ class InterpreterTest {
         public int broadcastCondition(Tcb thread, String condition) {
             condicionesUsadas.add("broadcast " + condition);
             return 0;
+        }
+
+        @Override
+        public void claimResource(Tcb thread, String resource, int maximum) {
+            maximos.add(resource + "<=" + maximum);
+        }
+
+        @Override
+        public boolean takeResource(Tcb thread, String resource, int amount) {
+            if (libres < amount) {
+                negados.add(resource + "x" + amount);
+                return false;
+            }
+            libres -= amount;
+            tomados.add(resource + "x" + amount);
+            return true;
+        }
+
+        @Override
+        public void giveResource(Tcb thread, String resource, int amount) {
+            libres += amount;
+            soltados.add(resource + "x" + amount);
         }
     }
 
@@ -317,6 +341,73 @@ class InterpreterTest {
 
         assertEquals(StepResult.BLOCKED, new Interpreter().step(host, hilo(process)));
         assertEquals(List.of("hay_datos/contador"), host.condicionesUsadas);
+    }
+
+    @Test
+    @DisplayName("RES_CLAIM avisa al nucleo y deja el ejecutor donde estaba")
+    void declaraMaximoDeRecurso() {
+        Program program = Assembler.load("pide", """
+                RES_CLAIM impresora 2
+                EXIT
+                """);
+        Pcb process = proceso(program);
+        Host host = new Host();
+
+        assertEquals(StepResult.CONTINUE, new Interpreter().step(host, hilo(process)));
+        assertEquals(List.of("impresora<=2"), host.maximos);
+    }
+
+    @Test
+    @DisplayName("RES_TAKE sigue adelante cuando el banquero concede")
+    void tomaRecursoConcedido() {
+        Program program = Assembler.load("toma", """
+                RES_TAKE impresora 1
+                EXIT
+                """);
+        Pcb process = proceso(program);
+        Host host = new Host();
+
+        assertEquals(StepResult.CONTINUE, new Interpreter().step(host, hilo(process)));
+        assertEquals(List.of("impresorax1"), host.tomados);
+        assertEquals(9, host.libres);
+    }
+
+    @Test
+    @DisplayName("si el banquero no concede, el hilo pide bloqueo como con un cerrojo")
+    void tomaRecursoDenegadoPideBloqueo() {
+        Program program = Assembler.load("toma", """
+                RES_TAKE impresora 1
+                EXIT
+                """);
+        Pcb process = proceso(program);
+        Host host = new Host();
+        host.libres = 0;
+
+        assertEquals(StepResult.BLOCKED, new Interpreter().step(host, hilo(process)));
+        assertEquals(List.of("impresorax1"), host.negados);
+        assertTrue(host.tomados.isEmpty());
+    }
+
+    @Test
+    @DisplayName("RES_GIVE devuelve las instancias sin bloquear a nadie")
+    void devuelveRecurso() {
+        Program program = Assembler.load("devuelve", """
+                RES_CLAIM impresora 2
+                RES_TAKE impresora 2
+                RES_GIVE impresora 2
+                EXIT
+                """);
+        Pcb process = proceso(program);
+        Host host = new Host();
+        Interpreter interpreter = new Interpreter();
+
+        Tcb thread = hilo(process);
+        assertEquals(StepResult.CONTINUE, interpreter.step(host, thread));
+        assertEquals(StepResult.CONTINUE, interpreter.step(host, thread));
+        assertEquals(8, host.libres);
+        assertEquals(StepResult.CONTINUE, interpreter.step(host, thread));
+        assertEquals(10, host.libres);
+        assertEquals(List.of("impresorax2"), host.soltados);
     }
 
     @Test

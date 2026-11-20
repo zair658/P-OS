@@ -86,16 +86,18 @@ public record Snapshot(
 
     /** El estado de los tres mecanismos de sincronizacion. */
     public record Sync(List<LockRow> locks, List<SemRow> semaphores, List<CondRow> conditions,
-            String deadlock) {
+            List<ResRow> resources, String deadlock) {
 
         public Sync {
             locks = List.copyOf(locks);
             semaphores = List.copyOf(semaphores);
             conditions = List.copyOf(conditions);
+            resources = List.copyOf(resources);
         }
 
         public boolean idle() {
-            return locks.isEmpty() && semaphores.isEmpty() && conditions.isEmpty();
+            return locks.isEmpty() && semaphores.isEmpty() && conditions.isEmpty()
+                    && resources.isEmpty();
         }
     }
 
@@ -109,6 +111,15 @@ public record Snapshot(
 
     /** Una condicion: el cerrojo al que va atada y cuantos esperan. */
     public record CondRow(String name, String lock, int waiting) {
+    }
+
+    /**
+     * Un recurso del banquero: cuantas instancias hay, cuantas quedan libres,
+     * quienes tienen alguna y cuantos esperan. El "quienes" es lo que distingue
+     * esta fila de un semaforo: el banquero no da a quien llega, da a quien
+     * puede sin dejar el reparto sin salida.
+     */
+    public record ResRow(String name, int capacity, int available, String holders, int waiting) {
     }
 
     /** La contabilidad de llamadas al sistema. */

@@ -182,7 +182,8 @@ public final class Tcb {
     public boolean waitsForResource() {
         return blockedKind == BlockKind.CERROJO
                 || blockedKind == BlockKind.SEMAFORO
-                || blockedKind == BlockKind.CONDICION;
+                || blockedKind == BlockKind.CONDICION
+                || blockedKind == BlockKind.RECURSO;
     }
 
     /** Deja al hilo sin bloqueo, para cuando pasa a listo o termina. */

@@ -110,6 +110,28 @@ public final class UiDemo {
             finhilo: EXIT
             """;
 
+    /**
+     * Tres vueltas a una impresora que solo hay una: toma, imprime un rato y
+     * devuelve. Dos procesos con este mismo programa se pelean por ella, y el
+     * banquero decide a quien se la da.
+     */
+    private static final String CON_RECURSOS = """
+            RES_CLAIM impresora 1
+            SET 0
+            STORE 0
+            loop: RES_TAKE impresora 1
+                  LOAD 0
+                  ADD 1
+                  STORE 0
+                  SLEEP 2
+                  RES_GIVE impresora 1
+                  LOAD 0
+                  CMP 3
+                  JZ fin
+                  JMP loop
+            fin:  EXIT
+            """;
+
     /** Productor y consumidor dandose el turno con dos semaforos. */
     private static final String CON_SEMAFOROS = """
             SEM_INIT hueco 1
@@ -168,6 +190,10 @@ public final class UiDemo {
         kernel.createProcess("carga-b", Assembler.load("carga-b", SOLO_CALCULO));
         kernel.createProcess("contienda", Assembler.load("contienda", CON_CERROJO));
         kernel.createProcess("cola", Assembler.load("cola", CON_SEMAFOROS));
+        // Una impresora para dos procesos: aquí se ve al banquero negando.
+        kernel.declareResource("impresora", 1);
+        kernel.createProcess("imprenta-a", Assembler.load("imprenta-a", CON_RECURSOS));
+        kernel.createProcess("imprenta-b", Assembler.load("imprenta-b", CON_RECURSOS));
 
         Shell shell = new Shell(kernel.syscalls());
         Terminal terminal = new Terminal(shell, new Console(List.of(

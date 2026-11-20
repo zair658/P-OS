@@ -9,6 +9,7 @@ import pos.phys.PhysicalMemory;
 import pos.proc.Pcb;
 import pos.proc.State;
 import pos.proc.Tcb;
+import pos.sync.Banker;
 import pos.sync.LockManager;
 import pos.sys.SystemCalls;
 
@@ -157,8 +158,23 @@ public final class Snapshotter {
                     kernel.conditions().waitingCount(name)));
         }
 
+        Banker banquero = kernel.banker();
+        List<Snapshot.ResRow> resRows = new ArrayList<>();
+        for (String name : banquero.resources()) {
+            StringBuilder holders = new StringBuilder();
+            for (Banker.Row row : banquero.table()) {
+                if (row.resource().equals(name) && row.allocated() > 0) {
+                    holders.append(holders.length() == 0 ? "" : ", ")
+                            .append(row.process()).append(' ').append(row.allocated());
+                }
+            }
+            resRows.add(new Snapshot.ResRow(name, banquero.capacityOf(name),
+                    banquero.availableOf(name), holders.toString(),
+                    banquero.waitingCount(name)));
+        }
+
         LockManager.Deadlock deadlock = locks.findDeadlock();
-        return new Snapshot.Sync(lockRows, semRows, condRows,
+        return new Snapshot.Sync(lockRows, semRows, condRows, resRows,
                 deadlock == null ? null : deadlock.describe());
     }
 

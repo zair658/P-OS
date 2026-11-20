@@ -195,6 +195,48 @@ public sealed interface Instruction {
         }
     }
 
+    /**
+     * Declara el maximo que el proceso va a pedir de un recurso.
+     *
+     * Es la promesa que hace posible el banquero: sin ella no se puede saber si
+     * una peticion concreta deja el sistema en un estado del que todos puedan
+     * salir. Se declara una vez por proceso y recurso, antes de pedir nada, y
+     * pedir mas de lo declarado es un error del programa.
+     *
+     * Los recursos y sus instancias los declara el sistema, no el proceso: una
+     * impresora no pertenece a quien la usa.
+     */
+    record ResClaim(String resource, int maximum) implements Instruction {
+        @Override
+        public String text() {
+            return "RES_CLAIM " + resource + " " + maximum;
+        }
+    }
+
+    /**
+     * Pide instancias de un recurso.
+     *
+     * La concesion no depende solo de que queden instancias: el banquero ensaya
+     * el reparto y niega la peticion si el resultado no dejaria a todos los
+     * procesos un orden posible para terminar. En ese caso el hilo se bloquea,
+     * igual que con un cerrojo ocupado, y se le despierta cuando alguien devuelve
+     * lo suficiente para que su peticion pase el examen.
+     */
+    record ResTake(String resource, int amount) implements Instruction {
+        @Override
+        public String text() {
+            return "RES_TAKE " + resource + " " + amount;
+        }
+    }
+
+    /** Devuelve instancias de un recurso y despierta a quien pudiera esperarlas. */
+    record ResGive(String resource, int amount) implements Instruction {
+        @Override
+        public String text() {
+            return "RES_GIVE " + resource + " " + amount;
+        }
+    }
+
     /** Entrega el turno voluntariamente, sin bloquearse. */
     record Yield() implements Instruction {
         @Override

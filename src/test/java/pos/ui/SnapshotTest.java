@@ -38,11 +38,11 @@ class SnapshotTest {
         assertTrue(last.finished(), "el escenario tiene que acabar solo");
         assertTrue(feed.turns() > 1, "tiene que haber mas de una foto: " + feed.turns());
 
-        // Los cinco procesos y sus seis hilos, todos cerrados.
-        assertEquals(5, last.processes().size());
-        // Dos hilos en 'contienda', dos en 'cola' y uno en cada uno de los otros tres.
-        assertEquals(7, last.threads().size());
-        assertEquals(7, last.count(State.TERMINATED.etiqueta()));
+        // Los siete procesos y sus nueve hilos, todos cerrados.
+        assertEquals(7, last.processes().size());
+        // Dos hilos en 'contienda', dos en 'cola' y uno en cada uno de los otros cinco.
+        assertEquals(9, last.threads().size());
+        assertEquals(9, last.count(State.TERMINATED.etiqueta()));
 
         // Ningun hilo se quedo a medias ni fallo.
         for (Snapshot.ThreadInfo thread : last.threads()) {
@@ -114,6 +114,14 @@ class SnapshotTest {
                 "el productor devuelve el permiso al consumir: el hueco acaba libre");
         assertEquals(0, last.sync().semaphores().get(1).value(),
                 "no puede quedar dato sin consumir");
+
+        assertEquals(1, last.sync().resources().size());
+        Snapshot.ResRow impresora = last.sync().resources().get(0);
+        assertEquals("impresora", impresora.name());
+        assertEquals(1, impresora.capacity());
+        assertEquals(1, impresora.available(), "al acabar nadie la retiene");
+        assertEquals(0, impresora.waiting(), "nadie se queda esperandola");
+        assertTrue(impresora.holders().isEmpty(), impresora.holders());
     }
 
     @Test

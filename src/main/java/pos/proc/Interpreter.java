@@ -119,6 +119,21 @@ public final class Interpreter {
                 host.broadcastCondition(tcb, ins.condition());
                 yield StepResult.CONTINUE;
             }
+            case Instruction.ResClaim ins -> {
+                host.claimResource(tcb, ins.resource(), ins.maximum());
+                yield StepResult.CONTINUE;
+            }
+            case Instruction.ResTake ins ->
+                // Igual que LOCK y SEM_WAIT: el pc ya apunto a la instruccion
+                // siguiente y la concesion se completa mientras el hilo duerme.
+                // Negar la peticion sin bloquear seria mentirle al programa:
+                // seguiria adelante creyendo que tiene lo que pidio.
+                host.takeResource(tcb, ins.resource(), ins.amount())
+                        ? StepResult.CONTINUE : StepResult.BLOCKED;
+            case Instruction.ResGive ins -> {
+                host.giveResource(tcb, ins.resource(), ins.amount());
+                yield StepResult.CONTINUE;
+            }
             case Instruction.Yield ignored -> StepResult.YIELDED;
             case Instruction.Sleep ins -> {
                 tcb.setPendingSleep(ins.ticks());
