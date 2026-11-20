@@ -18,6 +18,11 @@ import pos.base.PosFault;
  * resultado son etapas ya resueltas: la terminal no tiene que volver a mirar la
  * linea original para saber a donde va cada cosa.
  *
+ * El {@code &} del final marca la ultima etapa como trabajo en segundo plano. Va
+ * solo al final de la linea, y no entre dos ordenes como el punto y coma de otras
+ * cascaras: aqui no hay separador de ordenes, y aceptar {@code a & b} obligaria a
+ * inventarse uno que despues nadie usa.
+ *
  * El analizador no sabe que ordenes existen. Si la linea esta bien formada pero
  * la orden no existe, eso se descubre al ejecutarla, no aqui.
  */
@@ -28,10 +33,16 @@ public final class LineParser {
     }
 
     /** Una orden dentro de una tuberia, con sus redirecciones. */
-    public record Stage(List<String> words, String stdinFile, String stdoutFile, boolean append) {
+    public record Stage(List<String> words, String stdinFile, String stdoutFile, boolean append,
+            boolean background) {
 
         public Stage {
             words = List.copyOf(words);
+        }
+
+        /** Una etapa en primer plano, que es como llega todo lo que no lleva {@code &}. */
+        public Stage(List<String> words, String stdinFile, String stdoutFile, boolean append) {
+            this(words, stdinFile, stdoutFile, append, false);
         }
 
         /** Nombre de la orden: la primera palabra. */
@@ -58,7 +69,7 @@ public final class LineParser {
     }
 
     private enum Kind {
-        WORD, PIPE, OUT, APPEND, IN
+        WORD, PIPE, OUT, APPEND, IN, AMP
     }
 
     private record Token(Kind kind, String text) {
@@ -127,6 +138,11 @@ public final class LineParser {
                     tokens.add(new Token(Kind.OUT, ">"));
                     i++;
                 }
+            } else if (c == '&') {
+                flush(tokens, word, inWord);
+                inWord = false;
+                tokens.add(new Token(Kind.AMP, "&"));
+                i++;
             } else if (c == '<') {
                 flush(tokens, word, inWord);
                 inWord = false;
@@ -175,6 +191,16 @@ public final class LineParser {
                 stdoutFile = null;
                 append = false;
                 continue;
+            }
+            if (token.kind() == Kind.AMP) {
+                if (words.isEmpty()) {
+                    throw new PosFault("'&' sin orden delante");
+                }
+                if (i != tokens.size() - 1) {
+                    throw new PosFault("'&' solo puede ir al final de la linea");
+                }
+                stages.add(new Stage(words, stdinFile, stdoutFile, append, true));
+                return new ParsedLine(stages);
             }
             if (i + 1 >= tokens.size() || tokens.get(i + 1).kind() != Kind.WORD) {
                 throw new PosFault("falta el fichero detras de '" + token.text() + "'");

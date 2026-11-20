@@ -38,7 +38,18 @@ public enum BlockKind {
      * esta espera como una arista hacia un dueño: aqui no hay dueño, hay una
      * decision del banquero.
      */
-    RECURSO("un recurso");
+    RECURSO("un recurso"),
+
+    /**
+     * Espera a que otro proceso termine.
+     *
+     * Es la espera del {@code fg} y del {@code wait}: la terminal se aparta de la
+     * cola de listos hasta que el proceso en primer plano muere. No es una espera
+     * por recurso y no entra en el grafo del detector de interbloqueos, porque no
+     * hay ningun dueño del que tirar: lo que se espera es el fin de un proceso.
+     * Quien la levanta es el nucleo, al cerrar el proceso; nadie la concede.
+     */
+    PROCESO("un proceso");
 
     private final String descripcion;
 

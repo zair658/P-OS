@@ -186,6 +186,11 @@ public final class Tcb {
                 || blockedKind == BlockKind.RECURSO;
     }
 
+    /** true si espera a que otro proceso termine. */
+    public boolean waitsForProcess() {
+        return blockedKind == BlockKind.PROCESO;
+    }
+
     /** Deja al hilo sin bloqueo, para cuando pasa a listo o termina. */
     public void clearBlock() {
         this.blockedOn = null;

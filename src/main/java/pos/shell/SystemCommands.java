@@ -134,6 +134,15 @@ public final class SystemCommands {
         }
         String source = shell.readFile(args.get(1));
         int pid = number(shell.must(new Syscall.Spawn(args.get(0), source)), "pid");
+        if (shell.inBackground()) {
+            // Solo los arranques con & son trabajos. Un spawn normal es un
+            // proceso que la sesion lanzo y no reclama: meterlo en la tabla de
+            // trabajos haria que 'fg' ofreciera traer al frente cosas que nunca
+            // estuvieron detras.
+            JobTable.Job job = shell.jobs().add(pid, args.get(0), true);
+            out.println(job + ": " + source.lines().count() + " linea(s) de codigo");
+            return;
+        }
         out.println("p" + pid + " creado con " + source.lines().count() + " linea(s) de codigo");
     }
 

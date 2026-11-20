@@ -17,6 +17,17 @@ public enum State {
     RUNNING("ejecutando"),
     /** Espera un suceso: fin de una espera o, mas adelante, un cerrojo. */
     BLOCKED("bloqueado"),
+    /**
+     * Detenido desde fuera: no espera nada, pero tampoco puede ejecutar.
+     *
+     * Es el estado que introduce el control de trabajos y el unico que no sale
+     * de una decision del propio hilo. Un hilo bloqueado se despertara cuando
+     * llegue lo que espera; uno detenido no tiene nada que esperar: solo vuelve
+     * a la vida si alguien lo reanuda. Por eso no esta en la cola de listos ni
+     * en la de bloqueados, y por eso no cuenta como averia cuando el sistema se
+     * cierra con el puesto.
+     */
+    STOPPED("detenido"),
     /** Termino o fallo. */
     TERMINATED("terminado");
 

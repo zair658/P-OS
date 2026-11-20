@@ -32,6 +32,8 @@ public enum EventKind {
     RES_TAKE("recurso concedido"),
     RES_WAIT("recurso denegado"),
     RES_GIVE("recurso devuelto"),
+    STOP("proceso detenido"),
+    CONT("proceso reanudado"),
     EXIT("fin de hilo"),
     FAULT("fallo"),
     IDLE("sin trabajo"),

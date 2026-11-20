@@ -152,6 +152,20 @@ public final class SystemCalls {
                 }
                 yield SyscallResult.success(Integer.toString(kernel.kill(kill.pid())));
             }
+            case Syscall.Suspend suspend -> {
+                if (suspend.pid() == pid) {
+                    throw new PosFault("un proceso no se detiene a si mismo: es el que tiene el turno");
+                }
+                yield SyscallResult.success(Integer.toString(kernel.suspend(suspend.pid())));
+            }
+            case Syscall.Resume resume -> SyscallResult.success(
+                    Integer.toString(kernel.resume(resume.pid())));
+            case Syscall.Job job -> SyscallResult.success(jobLine(job.pid()));
+            case Syscall.WaitProcess wait -> SyscallResult.success(
+                    // Se devuelve si hubo espera de verdad. Quien llama tiene que
+                    // saberlo: bloquearse por un proceso que ya murio seria
+                    // quedarse dormido esperando un aviso que ya se dio.
+                    kernel.waitForProcess(self, wait.pid()) ? "1" : "0");
             case Syscall.Mem ignored -> SyscallResult.success(memoryReport());
             case Syscall.Sleep sleep -> {
                 sleeps.merge(pid, Math.max(1L, sleep.ticks()), Long::sum);
@@ -310,21 +324,19 @@ public final class SystemCalls {
      * listo, listo antes que bloqueado), y si no queda ninguno vivo, termino.
      */
     private static State processState(Pcb process) {
-        State summary = State.TERMINATED;
-        for (Tcb thread : process.threads()) {
-            State state = thread.state();
-            if (state == State.RUNNING) {
-                return State.RUNNING;
-            }
-            if (state == State.READY) {
-                summary = State.READY;
-            } else if (state == State.BLOCKED && summary != State.READY) {
-                summary = State.BLOCKED;
-            } else if (state == State.NEW && summary == State.TERMINATED) {
-                summary = State.NEW;
+        // El orden de esta lista es la prioridad del resumen: manda el hilo que
+        // este mas adelante. El detenido va antes que el bloqueado porque dice
+        // mas: un proceso con un hilo detenido y otro esperando un cerrojo no
+        // esta esperando nada que pueda llegar solo, esta parado a proposito.
+        for (State candidate : new State[] { State.RUNNING, State.READY, State.STOPPED,
+                State.BLOCKED, State.NEW }) {
+            for (Tcb thread : process.threads()) {
+                if (thread.state() == candidate) {
+                    return candidate;
+                }
             }
         }
-        return summary;
+        return State.TERMINATED;
     }
 
     private static String stateText(State state) {
@@ -333,8 +345,32 @@ public final class SystemCalls {
             case READY -> "listo";
             case RUNNING -> "ejecutando";
             case BLOCKED -> "bloqueado";
+            case STOPPED -> "detenido";
             case TERMINATED -> "terminado";
         };
+    }
+
+    /**
+     * Una fila con el estado de un proceso, o vacio si ya no existe.
+     *
+     * El formato es el mismo que el de {@code ps} para que la tabla de trabajos
+     * de la cascara pueda leerlo sin inventarse otro idioma.
+     */
+    private String jobLine(int pid) {
+        for (Pcb process : kernel.processes()) {
+            if (process.id() != pid) {
+                continue;
+            }
+            int live = 0;
+            for (Tcb thread : process.threads()) {
+                if (thread.state() != State.TERMINATED) {
+                    live++;
+                }
+            }
+            return pid + "\t" + process.name() + "\t"
+                    + stateText(processState(process)) + "\t" + live;
+        }
+        return "";
     }
 
     // ------------------------------------------------------------------

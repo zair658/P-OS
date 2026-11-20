@@ -81,6 +81,14 @@ public final class Terminal implements HostedTask {
         // terminal tendria un turno infinito y la cuota no valdria para nadie.
         host.retireInstruction(thread);
 
+        if (shell.drainWait()) {
+            // El hilo ya viene apuntado como esperando a ese proceso desde la
+            // llamada al sistema; aqui solo se le dice al planificador que lo
+            // saque de la cola. Sin hora de despertar: lo despertara el fin del
+            // proceso, no el reloj.
+            return StepResult.BLOCKED;
+        }
+
         long sleep = shell.drainSleep();
         if (sleep > 0) {
             thread.setPendingSleep(sleep);

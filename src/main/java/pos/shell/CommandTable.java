@@ -24,6 +24,7 @@ public final class CommandTable {
         FileCommands.register(table);
         TextCommands.register(table);
         SystemCommands.register(table);
+        JobCommands.register(table);
         return table;
     }
 

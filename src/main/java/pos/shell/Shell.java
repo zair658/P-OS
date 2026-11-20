@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import pos.base.PosFault;
+import pos.proc.State;
 import pos.proc.Tcb;
 import pos.sys.Syscall;
 import pos.sys.SyscallResult;
@@ -18,18 +19,25 @@ import pos.sys.SystemCalls;
  * un sistema real entre la biblioteca del programador y la interfaz de llamadas,
  * solo que aqui caben las dos en un fichero legible.
  *
- * La sesion tambien lleva la cuenta de dos cosas que no son llamadas: las
- * peticiones de dormir y de terminar. Ambas se apuntan y las ejecuta la terminal
- * al final del paso, porque son cosas que solo puede hacer el hilo que tiene el
- * turno: dormir o morir desde dentro de una orden dejaria la orden a medias.
+ * La sesion tambien lleva la cuenta de tres cosas que no son llamadas: las
+ * peticiones de dormir, de esperar a un proceso y de terminar. Las tres se
+ * apuntan y las ejecuta la terminal al final del paso, porque son cosas que solo
+ * puede hacer el hilo que tiene el turno: dormir o morir desde dentro de una
+ * orden dejaria la orden a medias.
+ *
+ * Y lleva la tabla de trabajos, que no es lo mismo que la tabla de procesos: un
+ * trabajo es un proceso visto desde esta sesion, con su numero y su plano.
  */
 public final class Shell {
 
     private final SystemCalls system;
     private final CommandTable table;
     private final List<String> history = new ArrayList<>();
+    private final JobTable jobs = new JobTable();
     private Tcb self;
     private long sleepTicks;
+    private boolean background;
+    private boolean waitPending;
 
     public Shell(SystemCalls system) {
         this(system, CommandTable.standard());
@@ -93,6 +101,7 @@ public final class Shell {
             return;
         }
         history.add(line);
+        reap(out);
         LineParser.ParsedLine parsed;
         try {
             parsed = LineParser.parse(line);
@@ -135,11 +144,86 @@ public final class Shell {
             out.println(stage.name() + ": orden no encontrada; escribe 'help' para ver la lista");
             return;
         }
+        int tracked = jobs.size();
+        background = stage.background();
         try {
             command.run(this, stage.args(), in, out);
         } catch (PosFault fault) {
             out.println(stage.name() + ": " + fault.getMessage());
+        } finally {
+            background = false;
         }
+        if (stage.background() && jobs.size() == tracked) {
+            // Un & sobre algo que no arranca un proceso no tiene a quien
+            // aplicarse. Decirlo es mejor que fingir que se hizo algo.
+            out.println("&: '" + stage.name()
+                    + "' no arranca ningun proceso; el & solo vale para 'spawn'");
+        }
+    }
+
+    /** Los trabajos vivos de la sesion. */
+    public JobTable jobs() {
+        return jobs;
+    }
+
+    /** Si la orden que se esta ejecutando llego con {@code &}. */
+    public boolean inBackground() {
+        return background;
+    }
+
+    /**
+     * Apunta que la terminal debe esperar a un proceso al final del paso.
+     *
+     * Lo pide {@code fg}: quien devuelve el primer plano a un trabajo se queda
+     * esperando a que acabe, como en cualquier terminal. La espera en si la
+     * arranca la terminal, no la orden, porque bloquearse desde dentro de la
+     * orden dejaria la orden a medias.
+     */
+    public void requestWait() {
+        waitPending = true;
+    }
+
+    /** Si habia una espera pedida y la consume. */
+    public boolean drainWait() {
+        boolean pending = waitPending;
+        waitPending = false;
+        return pending;
+    }
+
+    /**
+     * Retira de la tabla los trabajos que ya terminaron, avisando de cada uno.
+     *
+     * Se llama al principio de cada linea: el trabajo murio mientras nadie
+     * miraba, y el momento de contarlo es cuando el usuario vuelve a escribir.
+     * Cuesta una llamada por trabajo vivo, y solo si hay alguno; una sesion sin
+     * trabajos no paga nada por esta funcion.
+     */
+    private void reap(Output out) {
+        if (jobs.isEmpty()) {
+            return;
+        }
+        for (JobTable.Job job : jobs.all()) {
+            String state = jobState(job.pid());
+            if (state.isEmpty() || state.equals(State.TERMINATED.etiqueta())) {
+                jobs.remove(job.pid());
+                out.println(job + ": terminado");
+            }
+        }
+    }
+
+    /**
+     * El estado de un proceso segun el nucleo, o vacio si ya no existe.
+     *
+     * Vuelve a preguntar cada vez en vez de guardarlo: un trabajo que dice
+     * "ejecutando" y lleva diez tics muerto es peor que no tener tabla.
+     */
+    public String jobState(int pid) {
+        SyscallResult result = call(new Syscall.Job(pid));
+        if (!result.ok()) {
+            return "";
+        }
+        String[] parts = result.text().split("\t");
+        return parts.length < 3 ? "" : parts[2];
     }
 
     /** Una llamada que puede fallar: devuelve el resultado en vez de lanzar. */

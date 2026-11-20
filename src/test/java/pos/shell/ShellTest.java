@@ -3,6 +3,7 @@ package pos.shell;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import pos.alloc.BestFit;
+import pos.base.PosFault;
 import pos.fs.AllocationMethod;
 import pos.fs.FileSystem;
 import pos.fs.FsLayout;
@@ -73,6 +75,10 @@ class ShellTest {
         // varias lineas y aqui lo que se prueba es la terminal, no el parser.
         fs.create("/tarea.pos", "SET 0\nloop: ADD 1\nSTORE 0\nCMP 6\nJZ fin\nJMP loop\nfin: EXIT\n");
         fs.create("/bucle.pos", "SET 0\nloop: ADD 1\nSTORE 0\nJMP loop\n");
+        // Programa largo pero finito: sirve para ver que 'fg' espera de verdad a
+        // que el proceso acabe, cosa que con 'tarea' no daria tiempo a mirar.
+        fs.create("/largo.pos",
+                "SET 0\nloop: ADD 1\nSTORE 0\nCMP 60\nJZ fin\nJMP loop\nfin: EXIT\n");
         return fs;
     }
 
@@ -337,6 +343,35 @@ class ShellTest {
             Sesion s = sesion("echo \"sin cerrar");
             s.debeContener("error:");
         }
+
+        @Test
+        @DisplayName("el & final marca la etapa y no llega a los argumentos")
+        void ampersandFinal() {
+            LineParser.Stage stage = LineParser.parse("spawn eco /tarea.pos &").stages().get(0);
+            assertTrue(stage.background(), "el & tiene que marcar segundo plano");
+            assertEquals(List.of("spawn", "eco", "/tarea.pos"), stage.words());
+        }
+
+        @Test
+        @DisplayName("sin & la etapa va en primer plano")
+        void sinAmpersand() {
+            assertFalse(LineParser.parse("spawn eco /tarea.pos").stages().get(0).background());
+        }
+
+        @Test
+        @DisplayName("un & en medio de la linea se rechaza")
+        void ampersandEnMedio() {
+            PosFault fallo = assertThrows(PosFault.class,
+                    () -> LineParser.parse("echo a & echo b"));
+            assertTrue(fallo.getMessage().contains("al final"), fallo.getMessage());
+        }
+
+        @Test
+        @DisplayName("un & sin orden delante se rechaza")
+        void ampersandSolo() {
+            PosFault fallo = assertThrows(PosFault.class, () -> LineParser.parse("&"));
+            assertTrue(fallo.getMessage().contains("sin orden"), fallo.getMessage());
+        }
     }
 
     @Nested
@@ -366,6 +401,89 @@ class ShellTest {
             assertNotNull(s.texto());
             assertTrue(s.kernel().clock() > 30,
                     "dormir 30 tics no puede dejar el reloj por debajo");
+        }
+    }
+
+    @Nested
+    @DisplayName("trabajos")
+    class Trabajos {
+
+        @Test
+        @DisplayName("spawn con & crea un trabajo y jobs lo pinta")
+        void jobsLoPinta() {
+            Sesion s = sesion("spawn bucle /bucle.pos &", "stop %1", "jobs", "kill 2");
+            s.debeContener("[1] p2 bucle (segundo plano)");
+            s.debeContener("bucle (segundo plano): detenido (1 hilo(s) fuera de la cola)");
+            // La fila de la tabla: numero, pid, estado, plano y nombre.
+            s.debeTenerLinea("  [1]   p2  detenido    segundo bucle");
+        }
+
+        @Test
+        @DisplayName("bg sin detener solo cambia el plano; detenido, ademas reanuda")
+        void bgReanuda() {
+            Sesion s = sesion("spawn bucle /bucle.pos &", "stop %1", "bg %1", "jobs", "kill 2");
+            s.debeContener("reanudado en segundo plano");
+            // Vuelve a la cola de listos: no se salta el turno por haber estado
+            // detenido, y la tabla lo llama por su nombre.
+            s.debeTenerLinea("  [1]   p2  listo       segundo bucle");
+        }
+
+        @Test
+        @DisplayName("fg trae el trabajo al frente y la terminal espera a que acabe")
+        void fgEspera() {
+            Sesion s = sesion("spawn largo /largo.pos &", "fg %1", "echo fin");
+            s.debeContener("al primer plano; la terminal espera a que termine");
+            String texto = s.texto();
+            int espera = texto.indexOf("espera a que termine");
+            int acaba = texto.indexOf("largo (primer plano): terminado");
+            int vuelta = texto.lastIndexOf("\nfin");
+            assertTrue(acaba > espera,
+                    () -> "el trabajo tiene que terminar despues de la espera:\n" + texto);
+            assertTrue(vuelta > acaba,
+                    () -> "la terminal solo vuelve al teclado cuando el trabajo acaba:\n" + texto);
+        }
+
+        @Test
+        @DisplayName("un trabajo que acaba se anuncia en la linea siguiente")
+        void avisaDelQueAcabo() {
+            // El programa tarda mas que la linea siguiente: se le da tiempo con
+            // un sleep, que es la unica forma de que el trabajo muera mientras
+            // la terminal no esta mirando.
+            Sesion s = sesion("spawn tarea /tarea.pos &", "sleep 120", "jobs");
+            s.debeContener("tarea (segundo plano): terminado");
+            // Y se va de la tabla: una fila que sigue ahi despues de avisar
+            // seria un fantasma que no se puede ni matar ni traer al frente.
+            s.debeContener("no hay trabajos en esta sesion");
+        }
+
+        @Test
+        @DisplayName("un & sobre algo que no arranca procesos se avisa")
+        void ampersandSinProceso() {
+            sesion("echo hola &").debeContener("el & solo vale para 'spawn'");
+        }
+
+        @Test
+        @DisplayName("sin trabajos, jobs lo dice y las ordenes avisan de que falta el numero")
+        void sinTrabajos() {
+            Sesion s = sesion("jobs", "bg %9", "fg %9", "stop");
+            s.debeContener("no hay trabajos en esta sesion");
+            s.debeContener("no hay ningun trabajo %9");
+            s.debeContener("falta el trabajo");
+        }
+
+        @Test
+        @DisplayName("un pid que no es de la sesion no vale como trabajo")
+        void pidAjeno() {
+            // p1 es la propia terminal: existe, pero no es un trabajo.
+            sesion("spawn bucle /bucle.pos &", "bg 1", "kill 2")
+                    .debeContener("p1 no es un trabajo de esta sesion");
+        }
+
+        @Test
+        @DisplayName("sin trabajos, el pid no se confunde con un trabajo")
+        void sinTrabajosPid() {
+            sesion("spawn tarea /tarea.pos", "bg 2")
+                    .debeContener("no hay trabajos: arranca uno con 'spawn ... &'");
         }
     }
 

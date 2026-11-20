@@ -67,6 +67,8 @@ public final class Kernel implements ExecutionHost {
     private final List<Tcb> allThreads = new ArrayList<>();
     private final Deque<Tcb> ready = new ArrayDeque<>();
     private final List<Tcb> blocked = new ArrayList<>();
+    /** Quien espera a que un proceso termine, por pid del proceso esperado. */
+    private final Map<Integer, List<Tcb>> processWaiters = new LinkedHashMap<>();
 
     private final LockManager locks = new LockManager();
     private final SemaphoreManager semaphores = new SemaphoreManager();
@@ -237,11 +239,176 @@ public final class Kernel implements ExecutionHost {
         }
         ProcessFactory.terminate(process);
         captureFinalMemory(process);
+        releaseWaiters(pid);
         int pending = syscalls.release(pid);
         trace.add(clock, EventKind.EXIT, "p" + pid,
                 "kill: " + killed + " hilo(s) terminados, " + pending
                         + " descriptor(es) descartados sin guardar");
         return killed;
+    }
+
+    /**
+     * Detiene un proceso: sus hilos ejecutables dejan de estarlo hasta que
+     * alguien los reanude.
+     *
+     * Es el equivalente del Ctrl-Z de una terminal. Se hace sacando al hilo de
+     * la cola de listos y marcandolo {@link State#STOPPED}: el hilo real de Java
+     * que lo transporta se queda esperando el turno igual que antes, asi que
+     * detener no cuesta ni un hilo del sistema operativo de verdad.
+     *
+     * Dos limites que son decisiones y no olvidos:
+     * <ul>
+     *   <li><b>Un hilo bloqueado no se detiene.</b> Esta esperando un cerrojo o
+     *       un permiso, y el recurso ya lo da por concedido a este hilo: si se
+     *       congelara aqui, la concesion se quedaria en el aire y el recurso
+     *       contaria como ocupado por alguien que no lo usa. Se detiene lo que
+     *       puede ejecutar; lo que espera sigue esperando.</li>
+     *   <li><b>Un recien creado si se detiene.</b> Un hilo en
+     *       {@link State#NEW} todavia no ha entrado en la cola, pero detenerlo
+     *       es util y natural: {@code spawn ... &} seguido de {@code stop %1}
+     *       tiene que poder pararlo antes de que corra la primera instruccion.
+     *       Al pasar a detenido sale de las llegadas, y la admision lo salta
+     *       porque ya no esta en {@code NEW}.</li>
+     *   <li><b>Nadie se detiene a si mismo.</b> El hilo que ejecuta la orden esta
+     *       dentro de su turno: si se marcara detenido, al devolver el turno el
+     *       nucleo lo volveria a poner en la cola segun el resultado y la orden
+     *       se contradeciria a si misma. Un proceso puede detener a otro, no a
+     *       quien le esta pidiendo que se detenga.</li>
+     * </ul>
+     *
+     * @return cuantos hilos quedaron detenidos
+     */
+    public int suspend(int pid) {
+        Pcb process = processes.get(pid);
+        if (process == null) {
+            throw new PosFault("no existe el proceso " + pid);
+        }
+        if (process.state() == State.TERMINATED) {
+            throw new PosFault("el proceso " + pid + " ya termino");
+        }
+        Tcb running = baton.holder();
+        int stopped = 0;
+        for (Tcb thread : process.threads()) {
+            if (thread == running) {
+                continue;
+            }
+            if (thread.state() == State.READY) {
+                ready.remove(thread);
+                thread.setState(State.STOPPED);
+                stopped++;
+            } else if (thread.state() == State.NEW) {
+                thread.setState(State.STOPPED);
+                stopped++;
+            }
+        }
+        if (stopped == 0) {
+            // Se distingue el caso del proceso bloqueado del de un proceso que
+            // ya estaba detenido: el mensaje es lo unico que vera quien lo
+            // intente, y "no se pudo" a secas no ensenya nada.
+            boolean already = process.threads().stream()
+                    .allMatch(t -> t.state() == State.STOPPED || t.state() == State.TERMINATED);
+            throw new PosFault(already
+                    ? "el proceso " + pid + " ya estaba detenido"
+                    : "no se puede detener " + pid + ": no tiene ningun hilo ejecutable"
+                            + " (esta esperando o es el que ejecuta la orden)");
+        }
+        trace.add(clock, EventKind.STOP, "p" + pid,
+                "detenido: " + stopped + " hilo(s) salen de la cola de listos");
+        return stopped;
+    }
+
+    /**
+     * Reanuda un proceso detenido: sus hilos vuelven al final de la cola de
+     * listos, en el orden en que estaban.
+     *
+     * Vuelven al final y no al principio a proposito. Un hilo reanudado no ha
+     * gastado su cuanto, pero tampoco tiene derecho a colarse: si se pusiera el
+     * primero, detener y reanudar seria una forma de saltarse el turno.
+     *
+     * @return cuantos hilos volvieron a la cola
+     */
+    public int resume(int pid) {
+        Pcb process = processes.get(pid);
+        if (process == null) {
+            throw new PosFault("no existe el proceso " + pid);
+        }
+        int resumed = 0;
+        for (Tcb thread : process.threads()) {
+            if (thread.state() == State.STOPPED) {
+                thread.setState(State.READY);
+                ready.addLast(thread);
+                resumed++;
+            }
+        }
+        if (resumed == 0) {
+            throw new PosFault("el proceso " + pid + " no estaba detenido");
+        }
+        trace.add(clock, EventKind.CONT, "p" + pid,
+                "reanudado: " + resumed + " hilo(s) vuelven a la cola de listos");
+        return resumed;
+    }
+
+    /**
+     * Bloquea al hilo que llama hasta que el proceso indicado termine.
+     *
+     * Es lo que hace que {@code fg} sea de verdad un primer plano y no una
+     * etiqueta: la terminal no vuelve a atender el teclado hasta que el proceso
+     * en primer plano muere. La espera se levanta desde dentro del despacho, en
+     * el mismo sitio donde se cierra un proceso, para que quien espera se entere
+     * en el mismo tic en que el otro acaba.
+     *
+     * Si el proceso ya habia terminado, no se bloquea: se vuelve sin mas y quien
+     * llama sigue su camino.
+     */
+    public boolean waitForProcess(Tcb waiter, int pid) {
+        Pcb target = processes.get(pid);
+        if (target == null) {
+            throw new PosFault("no existe el proceso " + pid);
+        }
+        if (target.state() == State.TERMINATED) {
+            return false;
+        }
+        if (target == waiter.process()) {
+            throw new PosFault("un proceso no puede esperarse a si mismo");
+        }
+        waiter.setBlockedOn("p" + pid);
+        waiter.setBlockedKind(BlockKind.PROCESO);
+        waiter.setWakeTick(-1);
+        processWaiters.computeIfAbsent(pid, key -> new ArrayList<>()).add(waiter);
+        trace.add(clock, EventKind.BLOCK, waiter.id(),
+                "espera a que termine p" + pid + " para volver al primer plano");
+        return true;
+    }
+
+    /**
+     * Suelta a los que esperaban a este proceso.
+     *
+     * Se llama cuando el proceso se queda sin hilos vivos, no cuando muere el
+     * primero: quien espera a un proceso espera a todos sus hilos, y despertarlo
+     * antes seria devolverle el teclado con el programa a medias.
+     */
+    private void releaseWaiters(int pid) {
+        List<Tcb> waiters = processWaiters.remove(pid);
+        if (waiters == null) {
+            return;
+        }
+        for (Tcb waiter : waiters) {
+            blocked.remove(waiter);
+            waiter.clearBlock();
+            waiter.setState(State.READY);
+            ready.addLast(waiter);
+            trace.add(clock, EventKind.WAKE, waiter.id(),
+                    "p" + pid + " termino: vuelve al primer plano y a la cola de listos");
+        }
+    }
+
+    /** Los procesos que alguien esta esperando, para las tablas de la interfaz. */
+    public Map<Integer, Integer> waitingForProcess() {
+        Map<Integer, Integer> counts = new LinkedHashMap<>();
+        for (Map.Entry<Integer, List<Tcb>> entry : processWaiters.entrySet()) {
+            counts.put(entry.getKey(), entry.getValue().size());
+        }
+        return counts;
     }
 
     @Override
@@ -336,7 +503,7 @@ public final class Kernel implements ExecutionHost {
             case BLOCKED -> {
                 thread.setState(State.BLOCKED);
                 blocked.add(thread);
-                if (thread.waitsForResource()) {
+                if (thread.waitsForResource() || thread.waitsForProcess()) {
                     // Quien espera un cerrojo, un permiso o una condicion no
                     // tiene hora de despertar: lo despertara otro. Se limpia la
                     // marca de espera por si venia de un SLEEP anterior, o el
@@ -378,6 +545,8 @@ public final class Kernel implements ExecutionHost {
                 if (ProcessFactory.closeIfEmpty(process)) {
                     captureFinalMemory(process);
                     releaseMemory(process);
+                    // Quien esperaba a este proceso ya puede volver al teclado.
+                    releaseWaiters(process.id());
                 }
             }
         }
@@ -515,6 +684,7 @@ public final class Kernel implements ExecutionHost {
                     + " y tiene " + semaphores.waitingCount(name) + " hilo(s) en la cola";
             case CONDICION -> "duerme en la condicion '" + name
                     + "' y su cerrojo quedo libre";
+            case PROCESO -> "espera a que termine " + name + " para volver al primer plano";
             // El motivo lo redacta el banquero, que es el unico que sabe si
             // falta genero o si sobra pero no se puede dar.
             case RECURSO -> banker.pendingReason(thread);
@@ -529,6 +699,7 @@ public final class Kernel implements ExecutionHost {
             case SEMAFORO -> "obtiene un permiso de '" + name + "' y vuelve a listos";
             case CONDICION -> "vuelve a listos con el cerrojo de la condicion '" + name + "'";
             case RECURSO -> "obtiene '" + name + "' del banquero y vuelve a listos";
+            case PROCESO -> name + " termino y vuelve al primer plano";
             default -> "vuelve a listos";
         };
     }
@@ -564,6 +735,24 @@ public final class Kernel implements ExecutionHost {
             }
         }
         if (next == Long.MAX_VALUE) {
+            // Antes de hablar de bloqueo mutuo hay que descartar la pausa: si lo
+            // unico que queda vivo esta detenido, el sistema no esta en un
+            // interbloqueo, esta esperando una orden de fuera que en una sesion
+            // simulada ya no va a llegar. Confundir las dos cosas seria llamar
+            // averia a un sistema que se porta bien.
+            List<Tcb> stopped = new ArrayList<>();
+            for (Tcb thread : allThreads) {
+                if (thread.state() == State.STOPPED) {
+                    stopped.add(thread);
+                }
+            }
+            if (!stopped.isEmpty()) {
+                trace.add(clock, EventKind.IDLE, "nucleo",
+                        "sistema en pausa: " + stopped.size()
+                                + " hilo(s) detenido(s) y nada mas que ejecutar;"
+                                + " nadie los reanudara dentro de la sesion");
+                return false;
+            }
             // Nadie tiene hora de despertar. Puede ser un ciclo de cerrojos o
             // un cerrojo que se quedo sin duenyo vivo; el grafo de espera dice
             // cual de las dos cosas es, y con nombres y apellidos.
@@ -631,8 +820,14 @@ public final class Kernel implements ExecutionHost {
         }
         for (Tcb thread : allThreads) {
             if (thread.state() != State.TERMINATED) {
+                // El estado se mira antes de pisarlo: un hilo detenido al cerrar
+                // el sistema no es un hilo atascado, y la columna de notas tiene
+                // que decir cual de las dos cosas paso.
+                State before = thread.state();
                 thread.setState(State.TERMINATED);
-                if (thread.failure() == null) {
+                if (thread.failure() == null && before == State.STOPPED) {
+                    thread.markFailed("seguia detenido al cerrar el sistema");
+                } else if (thread.failure() == null) {
                     // En la tabla de resultados interesa distinguir "no llego a
                     // terminar" de "se quedo esperando un cerrojo que nadie iba
                     // a soltar": son dos averias distintas del mismo sintoma. La
@@ -657,6 +852,7 @@ public final class Kernel implements ExecutionHost {
             case CONDICION -> "bloqueado para siempre esperando la condicion '" + name + "'";
             case RECURSO -> "bloqueado para siempre esperando '" + name
                     + "', que el banquero no concede";
+            case PROCESO -> "esperaba a que terminara " + name + ", que no termino";
             default -> "seguia pendiente al cerrar el sistema";
         };
     }

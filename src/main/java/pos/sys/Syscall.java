@@ -437,4 +437,82 @@ public sealed interface Syscall {
             return "";
         }
     }
+
+    /** Detiene un proceso: sus hilos ejecutables salen de la cola de listos. */
+    record Suspend(int pid) implements Syscall {
+        @Override
+        public int code() {
+            return 22;
+        }
+
+        @Override
+        public String name() {
+            return "suspend";
+        }
+
+        @Override
+        public String arguments() {
+            return Integer.toString(pid);
+        }
+    }
+
+    /** Reanuda un proceso detenido. */
+    record Resume(int pid) implements Syscall {
+        @Override
+        public int code() {
+            return 23;
+        }
+
+        @Override
+        public String name() {
+            return "resume";
+        }
+
+        @Override
+        public String arguments() {
+            return Integer.toString(pid);
+        }
+    }
+
+    /**
+     * Estado de un proceso suelto, para la tabla de trabajos.
+     *
+     * Existe aparte de {@code ps} porque {@code jobs} pregunta por sus trabajos y
+     * no por todos los procesos: pedir la tabla entera para leer tres filas seria
+     * pedir de mas en cada linea escrita.
+     */
+    record Job(int pid) implements Syscall {
+        @Override
+        public int code() {
+            return 24;
+        }
+
+        @Override
+        public String name() {
+            return "job";
+        }
+
+        @Override
+        public String arguments() {
+            return Integer.toString(pid);
+        }
+    }
+
+    /** Espera a que un proceso termine, como el fg de una terminal. */
+    record WaitProcess(int pid) implements Syscall {
+        @Override
+        public int code() {
+            return 25;
+        }
+
+        @Override
+        public String name() {
+            return "wait";
+        }
+
+        @Override
+        public String arguments() {
+            return Integer.toString(pid);
+        }
+    }
 }
