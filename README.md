@@ -62,6 +62,30 @@ soluciones al lado, y la conclusión escrita.
 | `--traza` | Añade la traza completa de la ejecución Round Robin |
 | `--version`, `--help` | Versión y lista de banderas |
 
+## La terminal
+
+`--shell` imprime una sesión ya guionizada, no lee del teclado: es una
+demostración más. Las órdenes que entiende el intérprete son estas, las mismas que
+usa esa sesión.
+
+| Familia | Órdenes |
+|---|---|
+| Ficheros | `ls`, `cat`, `cd`, `pwd`, `mkdir`, `touch`, `rm`, `cp`, `mv`, `stat`, `tree`, `df`, `fsck` |
+| Texto | `echo`, `head`, `tail`, `wc`, `grep` |
+| Composición | `a \| b`, `>`, `>>`, `<` |
+| Trabajos | `jobs`, `bg`, `fg`, `stop`, y `&` al final de la línea |
+| Procesos | `ps`, `kill`, `spawn`, `sleep`, `clock`, `uptime` |
+| Sistema | `mem`, `syscalls`, `method`, `uname`, `version`, `history`, `help`, `clear`, `exit` |
+
+Cada una es una llamada al sistema: el núcleo las cuenta, las atiende y puede
+denegarlas. Eso vale también para la propia terminal, que es un proceso y pide
+turno como los demás. `help` las describe dentro de la sesión y `method` cambia el
+método de asignación, para ver el mismo árbol con los tres.
+
+Como la sesión va guionizada, lo que se puede probar es lo que hay escrito en el
+guion. Está en `ShellDemo`, en una lista de líneas: cambiar una orden por otra y
+volver a lanzar es todo lo que hace falta para ver qué responde el sistema.
+
 ## Cómo está hecho
 
 - **No simula el estado, lo tiene.** Un proceso de P-OS es un objeto con su
@@ -82,18 +106,21 @@ Los paquetes siguen esa separación:
 
 | Paquete | Contenido |
 |---|---|
+| `pos.base` | Piezas que usan todos: fallo del sistema, versión, tramos libres |
 | `pos.phys`, `pos.alloc` | Memoria física, mapa de marcos y gestores de huecos |
-| `pos.mm`, `pos.addr` | Memoria virtual, esquemas de asignación y traducción de direcciones |
+| `pos.mm` | Memoria virtual: contiguo, paginado, segmentado y traducción de direcciones |
 | `pos.proc`, `pos.kernel`, `pos.sched` | Procesos, hilos, intérprete, núcleo y planificadores |
-| `pos.fs`, `pos.disk` | Sistema de ficheros, imagen por bloques y métodos de asignación |
+| `pos.fs` | Sistema de ficheros, imagen por bloques y métodos de asignación |
 | `pos.sync` | Cerrojos, semáforos, variables de condición y monitores |
 | `pos.sys`, `pos.shell` | Llamadas al sistema, descriptores y terminal |
 | `pos.ui`, `pos.ui.swing` | Fotos del estado, modelos de tabla y la ventana |
+| `pos.launch` | Punto de entrada y una demostración por fase |
 
 ## Estado
 
-Ocho fases cerradas. El código son unas 19 000 líneas y las pruebas 6 200, en 24
-clases de prueba (338 casos contando los parametrizados).
+Ocho fases cerradas. El código son unas 19 000 líneas, y las pruebas 6 200 en 24
+ficheros de prueba: 46 clases contando las anidadas y 338 casos contando los
+parametrizados.
 
 | Fase | Contenido | Documento |
 |---|---|---|
