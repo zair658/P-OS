@@ -23,7 +23,7 @@ fases siguientes.
 | Núcleo | `pos.kernel.Kernel` | Reloj, colas, admisión, desalojo, métricas |
 | Traza | `pos.kernel.Trace` | Sucesos con tick y número de orden |
 | Informe | `pos.kernel.KernelReport` | Tabla de métricas y promedios |
-| Planificadores | `pos.sched` | FCFS y Round Robin con cuanto configurable |
+| Planificadores | `pos.sched` | FCFS, Round Robin, SJF y prioridades |
 
 ---
 
@@ -98,26 +98,48 @@ contador de programa propio, así que pueden estar en bucles distintos.
 
 ## 4. Planificadores
 
-Los dos que pide esta fase, elegidos para que la diferencia se vea.
+Los cuatro que hay ahora. FCFS y Round Robin son los de esta fase; SJF y
+prioridades se añadieron al cerrar la fase 8, cuando la comparación de la fase 6
+pedía los cuatro y solo había dos.
 
 - **FCFS**: elige por instante de llegada, sin expropiar. Cuanto sin límite.
 - **Round Robin**: primero de la cola, cuanto configurable, vuelta al final.
+- **SJF**: elige la ráfaga estimada más corta, sin expropiar. Cuanto sin límite.
+- **Prioridades**: elige la prioridad más alta y, entre iguales, reparte por
+  turnos de cuanto configurable.
 
 El desempate es siempre por llegada, luego proceso, luego hilo. Nunca por orden de
-iteración de una colección: eso haría que dos ejecuciones eligieran distinto.
+iteración de una colección: eso haría que dos ejecuciones eligieran distinto. La
+regla está en una sola clase, `pos.sched.Order`, para que las cuatro políticas no
+puedan desempatar distinto.
+
+Dos de ellas necesitan datos que un proceso no tenía: **prioridad** y **ráfaga
+estimada**. Las dos se declaran en el bloque de control y la segunda nace con el
+tamaño del programa. Eso último es una estimación, no una adivinación: en un
+programa con bucle se queda corta, porque las instrucciones del bucle se ejecutan
+varias veces. El escenario de la demostración declara las ráfagas reales para que
+SJF elija con datos; un escenario que no las declare obtiene una cota inferior.
+
+Ninguna de las cuatro lleva envejecimiento. Con prioridades eso se nota: un
+proceso de prioridad alta que nunca se bloquea deja sin turno a los de prioridad
+baja, y el sistema no lo corrige. Es el defecto clásico de la política y se deja a
+la vista a propósito.
 
 ---
 
 ## 5. Medición
 
 Escenario: tres procesos que llegan en el tick 0. Dos de cálculo (`contador`,
-26 ticks de CPU cada uno) y uno que solo espera (`SLEEP 8`, 2 ticks de CPU).
+26 ticks de CPU cada uno) y uno que solo espera (`SLEEP 8`, 2 ticks de CPU). El
+que espera es el más urgente: prioridad 0 frente a 1 y 2 de los de cálculo.
 
 | Planificador | Retorno medio | Espera media | Respuesta media | Reloj |
 |---|---:|---:|---:|---:|
 | FCFS | 46,67 | 28,67 | 26,00 | 62 |
 | Round Robin, cuanto 4 | 44,00 | 26,00 | 4,00 | 54 |
 | Round Robin, cuanto 1 | 40,33 | 22,33 | 1,00 | 54 |
+| SJF | 36,33 | 18,33 | 9,67 | 54 |
+| Prioridades, cuanto 4 | 30,67 | 12,67 | 9,67 | 54 |
 
 Lo que dicen los números, sin adornos:
 
@@ -130,6 +152,14 @@ Lo que dicen los números, sin adornos:
 - El retorno medio mejora con cuanto pequeño en este escenario concreto porque el
   proceso corto sale antes. No es una ley general y el documento no lo presenta
   como tal; con más carga de cálculo la tendencia se invierte.
+- **SJF pone primero al corto mientras la cola está quieta, y no lo rescata.**
+  Arranca al que espera, que se bloquea enseguida; cuando vuelve a estar listo, un
+  proceso largo ya tiene el procesador y SJF no expropia, así que espera 26 ticks
+  a que termine. Es la razón de que gane a FCFS y pierda contra prioridades.
+- **Prioridades sí lo recupera**, porque el cuanto devuelve el turno al núcleo y
+  el núcleo vuelve a elegir sobre toda la cola: el corto es el más urgente y se
+  lleva el procesador en el primer cambio. La diferencia entre SJF y prioridades
+  en esta tabla no está en el criterio sino en cuándo se vuelve a elegir.
 
 Reproducir:
 
@@ -144,13 +174,14 @@ java -jar target/p-os-0.1.0-SNAPSHOT.jar --traza   # y la traza completa
 
 ## 6. Pruebas
 
-34 pruebas nuevas, 81 en total, todas en verde. Las que importan:
+34 pruebas nuevas, 81 en total al cerrar la fase. La suite completa acabó en 347,
+de ellas 15 de planificación. Las que importan:
 
 | Prueba | Qué demuestra |
 |---|---|
 | `AssemblerTest` (8) | Etiquetas resueltas a índices; errores con nombre y línea |
 | `InterpreterTest` (6) | Aritmética, bucle, ceder, dormir, lanzar, dirección inválida |
-| `SchedulerTest` (6) | Elección determinista y desempate explícito |
+| `SchedulerTest` (15) | Elección determinista, desempate explícito, ráfaga y prioridad |
 | `KernelSchedulingTest` (13) | Alternancia, reproducibilidad, SPAWN, SLEEP, fallo aislado, métricas |
 
 La prueba de reproducibilidad compara la traza completa de dos ejecuciones

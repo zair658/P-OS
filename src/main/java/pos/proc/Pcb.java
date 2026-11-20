@@ -33,8 +33,13 @@ public final class Pcb {
     private final List<Tcb> threads;
     private final long arrivalTick;
 
+    /** Prioridad por defecto: la mas baja, para que quien no diga nada no adelante a nadie. */
+    public static final int PRIORIDAD_POR_DEFECTO = 0;
+
     private AddressSpace space;
     private State state = State.NEW;
+    private int priority = PRIORIDAD_POR_DEFECTO;
+    private int estimatedBurst;
 
     Pcb(int id, String name, Program program, int memoryUnits, long arrivalTick) {
         if (memoryUnits <= 0) {
@@ -46,6 +51,50 @@ public final class Pcb {
         this.memoryUnits = memoryUnits;
         this.threads = new ArrayList<>();
         this.arrivalTick = arrivalTick;
+        this.estimatedBurst = program.size();
+    }
+
+    /**
+     * Prioridad de planificacion. Cuanto mas baja, antes se le da el procesador.
+     *
+     * El convenio es el de los sistemas reales que ordenan al reves del sentido
+     * comun: el cero es la prioridad mas alta. Se elige asi porque la politica
+     * ordena de menor a mayor, y un {@code sorted()} que sube se lee mejor que
+     * uno que baja. El proceso que no dice nada nace con prioridad cero.
+     */
+    public int priority() {
+        return priority;
+    }
+
+    public void setPriority(int priority) {
+        if (priority < 0) {
+            throw new PosFault("la prioridad de '" + name + "' no puede ser negativa: " + priority);
+        }
+        this.priority = priority;
+    }
+
+    /**
+     * Rafaga estimada: lo que el planificador cree que va a durar el proceso.
+     *
+     * El sistema no adivina el futuro. Nace con el tamano del programa, que es
+     * una estimacion honesta en un programa sin bucles y una cota inferior en uno
+     * que los tiene, porque un bucle ejecuta sus instrucciones mas de una vez.
+     * Quien monta un escenario puede declarar otra cosa: eso es lo que hace la
+     * demostracion de planificacion para que SJF tenga algo que ordenar.
+     *
+     * Se guarda en el proceso y no en el hilo porque la carga que se planifica es
+     * el trabajo completo del programa, y los hilos de un proceso lo comparten.
+     */
+    public int estimatedBurst() {
+        return estimatedBurst;
+    }
+
+    public void setEstimatedBurst(int estimatedBurst) {
+        if (estimatedBurst <= 0) {
+            throw new PosFault("la rafaga estimada de '" + name + "' debe ser positiva: "
+                    + estimatedBurst);
+        }
+        this.estimatedBurst = estimatedBurst;
     }
 
     public int id() {

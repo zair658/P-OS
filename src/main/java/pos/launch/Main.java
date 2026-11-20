@@ -8,9 +8,12 @@ import pos.kernel.KernelReport;
 import pos.mm.MemorySetup;
 import pos.phys.PhysicalMemory;
 import pos.proc.Assembler;
+import pos.proc.Pcb;
 import pos.sched.FcfsScheduler;
+import pos.sched.PriorityScheduler;
 import pos.sched.RoundRobinScheduler;
 import pos.sched.Scheduler;
+import pos.sched.SjfScheduler;
 
 /**
  * Punto de entrada del sistema.
@@ -158,6 +161,8 @@ public final class Main {
         KernelReport fcfs = ejecutar(new FcfsScheduler());
         KernelReport rr4 = ejecutar(new RoundRobinScheduler(4));
         KernelReport rr1 = ejecutar(new RoundRobinScheduler(1));
+        KernelReport sjf = ejecutar(new SjfScheduler());
+        KernelReport prioridad = ejecutar(new PriorityScheduler(4));
 
         System.out.println();
         System.out.println("--- FCFS, sin expropiacion ---");
@@ -172,8 +177,16 @@ public final class Main {
         imprimeInforme(rr1);
 
         System.out.println();
+        System.out.println("--- SJF, el mas corto primero ---");
+        imprimeInforme(sjf);
+
+        System.out.println();
+        System.out.println("--- Prioridades, la mas alta primero ---");
+        imprimeInforme(prioridad);
+
+        System.out.println();
         System.out.println("--- resumen ---");
-        comparativa(fcfs, rr4, rr1);
+        comparativa(fcfs, rr4, rr1, sjf, prioridad);
 
         if (flag(args, "--traza")) {
             System.out.println();
@@ -210,9 +223,26 @@ public final class Main {
 
     private static Kernel construir(Scheduler scheduler) {
         Kernel kernel = new Kernel(scheduler, memorySetup());
-        kernel.createProcess("contador-a", Assembler.load("contador-a", CONTADOR));
-        kernel.createProcess("contador-b", Assembler.load("contador-b", CONTADOR));
-        kernel.createProcess("espera", Assembler.load("espera", ESPERA));
+        Pcb a = kernel.createProcess("contador-a", Assembler.load("contador-a", CONTADOR));
+        Pcb b = kernel.createProcess("contador-b", Assembler.load("contador-b", CONTADOR));
+        Pcb espera = kernel.createProcess("espera", Assembler.load("espera", ESPERA));
+
+        // Rafagas declaradas, no adivinadas. Las dos de calculo gastan 26 ticks de
+        // procesador de verdad (el bucle da cinco vueltas) y la que espera gasta 2.
+        // El tamano del programa no lo dice: son siete y dos instrucciones, y el
+        // bucle ejecuta las suyas cinco veces. Declararlas aqui es la unica forma
+        // de que SJF elija con datos en vez de con una suposicion.
+        a.setEstimatedBurst(26);
+        b.setEstimatedBurst(26);
+        espera.setEstimatedBurst(2);
+
+        // Prioridades: la que espera entrada es la mas urgente, que es la razon por
+        // la que en un sistema real una tarea interactiva adelanta a dos de
+        // calculo. Las dos de calculo van por detras y en distinto orden, para que
+        // la politica tenga algo que decidir entre ellas.
+        espera.setPriority(0);
+        a.setPriority(1);
+        b.setPriority(2);
         return kernel;
     }
 
@@ -250,8 +280,12 @@ public final class Main {
                     report.clock()));
         }
         System.out.println();
-        System.out.println("lectura: FCFS deja esperando al proceso corto detras de los dos largos;");
-        System.out.println("el turno rotatorio le da CPU antes, a cambio de mas cambios de contexto.");
+        System.out.println("lectura: FCFS y el turno rotatorio no miran cuanto va a durar cada trabajo,");
+        System.out.println("asi que el corto de dos ticks acaba detras de los largos. SJF lo pone primero");
+        System.out.println("mientras la cola esta quieta, pero no expropia: si el corto se despierta de un");
+        System.out.println("SLEEP con un largo ya corriendo, espera a que termine. Prioridad si lo recupera,");
+        System.out.println("porque cada cuanto vuelve a elegir sobre toda la cola y el corto es el urgente.");
+        System.out.println("La diferencia entre los dos no es el criterio: es cuando se vuelve a elegir.");
     }
 
     /** Valor que sigue a una bandera, o el valor por defecto si no viene. */

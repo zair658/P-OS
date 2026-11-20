@@ -127,7 +127,7 @@ De dentro hacia fuera. Cada capa solo puede depender de las anteriores.
 |---|---|---|
 | 1. Base | `pos.base` | Unidades, direcciones, resultados, errores, traza, reloj, utilidades de texto |
 | 2. Almacenamiento físico | `pos.phys` | Memoria física por bloques, mapa de marcos, área de intercambio |
-| 3. Estrategias | `pos.alloc`, `pos.addr`, `pos.sched`, `pos.disk` | Gestores de huecos, traductores, planificadores, asignación de disco |
+| 3. Estrategias | `pos.alloc`, `pos.mm`, `pos.sched`, `pos.fs` | Gestores de huecos, traductores, planificadores, asignación de disco |
 | 4. Ejecución | `pos.proc` | PCB, hilos, repertorio de instrucciones, intérprete |
 | 5. Tareas del sistema | `pos.fs`, `pos.sync` | Sistema de ficheros e imagen, cerrojos, semáforos, monitores, grafo de recursos |
 | 6. Núcleo | `pos.kernel` | Orquestación: arranque, bucle de planificación, despacho de llamadas, métricas |
@@ -642,6 +642,7 @@ cerrada y probada. El orden está elegido por dependencias, no por vistosidad.
 | F0 | Entorno, estructura, compilación, pruebas, integración continua local | Compila y ejecuta una prueba trivial |
 | F1 | Memoria física por bloques, mapa de marcos, tres gestores de huecos | Pruebas de hueco exacto, sin hueco, desempate, fusión e invariantes |
 | F2 | Procesos, hilos, repertorio de instrucciones, planificador con FCFS y RR | Dos procesos alternan turno y la traza es reproducible |
+| F2 | *Después:* SJF y prioridades completan los cuatro de la comparación | La misma carga da cinco filas de tabla, con la misma CPU total en todas |
 | F3 | Traductores contiguo, paginado y segmentado | Almacenar y leer el mismo valor bajo los tres esquemas |
 | F4 | Memoria virtual, fallo de página, FIFO, LRU, OPT | Contador de fallos correcto y anomalía de Belady reproducida |
 | F5 | Sistema de ficheros e imagen, tres métodos de asignación | Persistencia entre sesiones y verificación de integridad |

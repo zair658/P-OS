@@ -11,7 +11,8 @@ import pos.proc.Tcb;
  * delante retrasa a todos los cortos que llegaron despues.
  *
  * Desempate: llegada al sistema y, si coincide, orden de creacion del hilo. Con
- * eso dos ejecuciones del mismo escenario eligen siempre lo mismo.
+ * eso dos ejecuciones del mismo escenario eligen siempre lo mismo. La regla vive
+ * en {@link Order} porque es la misma para todas las politicas.
  */
 public final class FcfsScheduler implements Scheduler {
 
@@ -24,7 +25,7 @@ public final class FcfsScheduler implements Scheduler {
     public SchedulingDecision pick(List<Tcb> ready, long clock) {
         Tcb chosen = null;
         for (Tcb candidate : ready) {
-            if (chosen == null || earlier(candidate, chosen)) {
+            if (chosen == null || Order.earlier(candidate, chosen)) {
                 chosen = candidate;
             }
         }
@@ -33,15 +34,5 @@ public final class FcfsScheduler implements Scheduler {
         }
         return new SchedulingDecision(chosen, SchedulingDecision.NO_LIMIT,
                 "primero en llegar, primero en ser atendido");
-    }
-
-    private boolean earlier(Tcb a, Tcb b) {
-        if (a.arrivalTick() != b.arrivalTick()) {
-            return a.arrivalTick() < b.arrivalTick();
-        }
-        if (a.process().id() != b.process().id()) {
-            return a.process().id() < b.process().id();
-        }
-        return a.localId() < b.localId();
     }
 }

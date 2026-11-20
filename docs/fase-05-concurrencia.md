@@ -209,10 +209,12 @@ Esta fase es deliberadamente estrecha. Queda fuera, con motivo:
   variables de condición sí añadirían uno, y ese merece su propia sesión.
 - **Monitores.** Son cerrojos más condiciones por dentro: sin condiciones no hay
   nada que envolver.
-- **Prioridades y herencia de prioridad.** El planificador no tiene prioridades,
-  así que no hay inversión de prioridad que enseñar. Con cesión directa, la
-  inanición queda descartada por construcción; medirla exigiría el caso que se
-  acaba de descartar.
+- **Herencia de prioridad.** El planificador de esta fase no tenía prioridades, y
+  el de ahora las tiene pero sin herencia: la inversión de prioridad se puede
+  provocar y no se puede arreglar. Enseñarla aquí sería enseñar un problema con
+  una solución que el sistema no tiene, así que la escena queda para cuando la
+  herencia exista. Con cesión directa, además, la inanición queda descartada por
+  construcción.
 - **Banquero.** Es prevención, no detección: necesita que cada proceso declare
   sus máximos antes de ejecutar, lo que cambia el repertorio. Encaja mejor con el
   grafo de recursos completo que con la tabla de cerrojos.

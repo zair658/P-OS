@@ -19,7 +19,7 @@ Requiere **Java 21** y **Maven**. No hay dependencias de ejecución: solo JUnit
 para las pruebas.
 
 ```bash
-mvn test                 # 338 pruebas; imprime las tablas comparativas
+mvn test                 # 347 pruebas; imprime las tablas comparativas
 mvn package              # genera target/p-os-0.1.0-SNAPSHOT.jar
 ```
 
@@ -43,7 +43,7 @@ paneles se construyen, se les da tamaño y se pintan sobre una imagen.
 ## Las demostraciones
 
 Cada fase tiene una demostración que se imprime en la terminal y se puede
-reproducir sin tocar código. Todas usan el mismo formato: mismo problema, tres
+reproducir sin tocar código. Todas usan el mismo formato: mismo problema, varias
 soluciones al lado, y la conclusión escrita.
 
 | Bandera | Qué demuestra |
@@ -97,7 +97,9 @@ volver a lanzar es todo lo que hace falta para ver qué responde el sistema.
   el núcleo se lo permite. Eso hace el sistema reproducible.
 - **Cada mecanismo es una interfaz.** Gestores de huecos, traductores de
   direcciones, planificadores y métodos de asignación comparten contrato, así que
-  el mismo código corre con tres políticas y las tablas comparan lo mismo.
+  el mismo código corre con varias políticas y las tablas comparan lo mismo. En
+  planificación son cuatro: FCFS, round robin, el más corto primero y
+  prioridades.
 - **Lo que se dibuja es una copia.** La ventana no lee el núcleo mientras corre:
   recibe fotos inmutables y las reparte. Nunca ve un estado a medias, y refrescar
   es barato porque una foto repetida no toca nada.
@@ -118,9 +120,9 @@ Los paquetes siguen esa separación:
 
 ## Estado
 
-Ocho fases cerradas. El código son unas 19 000 líneas, y las pruebas 6 200 en 24
-ficheros de prueba: 46 clases contando las anidadas y 338 casos contando los
-parametrizados.
+Ocho fases cerradas. El código son unas 19 300 líneas en 113 ficheros, y las
+pruebas 6 300 en 24 ficheros: 46 clases contando las anidadas y 347 casos
+contando los parametrizados.
 
 | Fase | Contenido | Documento |
 |---|---|---|
@@ -134,6 +136,10 @@ parametrizados.
 | 6 | Semáforos, condiciones y monitores | [fase-06](docs/fase-06-sincronizacion.md) |
 | 7 | Llamadas al sistema, descriptores y terminal | [fase-07](docs/fase-07-llamadas.md) |
 | 8 | Ventana con seis vistas y capturas sin pantalla | [fase-08](docs/fase-08-interfaz.md) |
+
+Los dos planificadores que faltaban para completar la comparación, SJF y
+prioridades, se añadieron al cerrar la fase 8: están descritos en
+[`fase-02-procesos.md`](docs/fase-02-procesos.md), sección 4.
 
 ## Las vistas
 
