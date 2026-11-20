@@ -3,18 +3,27 @@ package pos.ui.swing;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
 import java.util.List;
 
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.ScrollPaneConstants;
+import javax.swing.Scrollable;
 import javax.swing.WindowConstants;
 
 import pos.ui.CallsTable;
@@ -42,6 +51,12 @@ public final class Shell {
     private static final String[] TABS = {
             "Resumen", "Procesos", "Reparto", "Memoria", "Sistema", "Traza"
     };
+
+    /** Separacion entre dos vistas apiladas. */
+    private static final int GAP = 2;
+
+    /** Columnas de las pestanas, para reajustar su alto con cada foto. */
+    private final List<JPanel> columns = new ArrayList<>();
 
     /** Modelos de tabla, que viven fuera de Swing. */
     private final ProcessTable processModel = new ProcessTable();
@@ -161,38 +176,22 @@ public final class Shell {
 
     /** Pestana de procesos: quien existe y quien ejecuta. */
     private JPanel pageProcesses() {
-        JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(Theme.BG);
-        page.add(processes, BorderLayout.NORTH);
-        page.add(threadsProc, BorderLayout.CENTER);
-        return page;
+        return page(processes, threadsProc);
     }
 
     /** Pestana del reparto: los hilos con sus tiempos y la cola en orden. */
     private JPanel pageScheduling() {
-        JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(Theme.BG);
-        page.add(threadsSched, BorderLayout.CENTER);
-        page.add(queue, BorderLayout.SOUTH);
-        return page;
+        return page(threadsSched, queue);
     }
 
     /** Pestana de memoria: el mapa y sus tramos. */
     private JPanel pageMemory() {
-        JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(Theme.BG);
-        page.add(mapMemory, BorderLayout.NORTH);
-        page.add(memory, BorderLayout.CENTER);
-        return page;
+        return page(mapMemory, memory);
     }
 
     /** Pestana del sistema: lo que se le pide al nucleo y lo que espera. */
     private JPanel pageSystem() {
-        JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(Theme.BG);
-        page.add(calls, BorderLayout.NORTH);
-        page.add(sync, BorderLayout.CENTER);
-        return page;
+        return page(calls, sync);
     }
 
     /** Pestana de la traza. */
@@ -201,6 +200,96 @@ public final class Shell {
         page.setBackground(Theme.BG);
         page.add(trace, BorderLayout.CENTER);
         return page;
+    }
+
+    /**
+     * Pestana con las vistas apiladas y el fondo detras.
+     *
+     * Cada vista se queda con el alto de su contenido y lo que sobra es fondo
+     * de la aplicacion, no filas vacias: una tabla de tres filas estirada a
+     * cuatrocientos pixeles no dice nada, solo ocupa. La barra aparece unicamente
+     * cuando la pila no cabe entera, y entonces se puede recorrer sin perder
+     * nada por abajo.
+     */
+    private JPanel page(JComponent... views) {
+        Column column = new Column();
+        for (int index = 0; index < views.length; index++) {
+            if (index > 0) {
+                column.add(Box.createVerticalStrut(GAP));
+            }
+            JComponent view = views[index];
+            view.setAlignmentX(Component.LEFT_ALIGNMENT);
+            column.add(view);
+        }
+        JScrollPane scroll = new JScrollPane(column,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.setOpaque(true);
+        scroll.setBackground(Theme.BG);
+        scroll.getViewport().setBackground(Theme.BG);
+        scroll.getVerticalScrollBar().setUI(new FlatScrollBarUI());
+        scroll.getVerticalScrollBar().setPreferredSize(new Dimension(9, 0));
+
+        JPanel page = new JPanel(new BorderLayout());
+        page.setBackground(Theme.BG);
+        page.add(scroll, BorderLayout.CENTER);
+        return page;
+    }
+
+    /** Columna de vistas: ancho de la ventana, alto el de su contenido. */
+    private final class Column extends JPanel implements Scrollable {
+
+        Column() {
+            setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+            setBackground(Theme.BG);
+            columns.add(this);
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visible, int orientation, int direction) {
+            return Theme.ROW_HEIGHT;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visible, int orientation, int direction) {
+            return Math.max(Theme.ROW_HEIGHT, visible.height - Theme.ROW_HEIGHT);
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
+        }
+    }
+
+    /**
+     * Ajusta el techo de cada vista al alto que pide.
+     *
+     * BoxLayout reparte el espacio que sobra hasta el maximo de cada hijo, y por
+     * defecto ese maximo es enorme: sin este paso las tablas volverian a
+     * estirarse. Se llama despues de cada foto porque el numero de filas cambia
+     * con el tiempo, y el alto de la vista cambia con el.
+     */
+    private void settle() {
+        for (JPanel column : columns) {
+            for (Component child : column.getComponents()) {
+                int height = child.getPreferredSize().height;
+                if (child.getMaximumSize().height != height) {
+                    child.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
+                }
+            }
+            column.revalidate();
+        }
     }
 
     /**
@@ -240,7 +329,9 @@ public final class Shell {
 
         top.update(shot);
         status.update(shot);
+        settle();
         pages.revalidate();
+        pages.repaint();
     }
 
     /** Serie temporal que acompana a la foto. */
