@@ -61,6 +61,8 @@ public final class TtyKeys implements Keys {
     private final Thread reader;
     /** Ancho del terminal en columnas: sin el, una linea larga se descuadra. */
     private final int columnas;
+    /** A quien se le avisa de Ctrl-Z, o {@code null} si esta entrada no puede. */
+    private final SenalDeTeclado senal;
 
     private volatile boolean closed;
     private String prompt = "";
@@ -92,7 +94,20 @@ public final class TtyKeys implements Keys {
     public TtyKeys(InputStream in, PrintStream out, LongSupplier clock,
             List<String> history, List<String> commands, boolean rawMode) {
         this(in, out, clock, history, commands, rawMode,
-                rawMode ? anchoDelTerminal() : ANCHO_POR_DEFECTO);
+                rawMode ? anchoDelTerminal() : ANCHO_POR_DEFECTO, null);
+    }
+
+    /**
+     * Igual, con el enganche para Ctrl-Z.
+     *
+     * @param senal lo que hay que avisar al pulsar Ctrl-Z, o {@code null} si esta
+     *     entrada no puede pedirle nada al sistema (guiones y pruebas)
+     */
+    public TtyKeys(InputStream in, PrintStream out, LongSupplier clock,
+            List<String> history, List<String> commands, boolean rawMode,
+            SenalDeTeclado senal) {
+        this(in, out, clock, history, commands, rawMode,
+                rawMode ? anchoDelTerminal() : ANCHO_POR_DEFECTO, senal);
     }
 
     /**
@@ -106,6 +121,17 @@ public final class TtyKeys implements Keys {
      */
     TtyKeys(InputStream in, PrintStream out, LongSupplier clock,
             List<String> history, List<String> commands, boolean rawMode, int columnas) {
+        this(in, out, clock, history, commands, rawMode, columnas, null);
+    }
+
+    /**
+     * El constructor de verdad: los demas acaban aqui.
+     *
+     * @param senal a quien se avisa de Ctrl-Z, o {@code null}
+     */
+    TtyKeys(InputStream in, PrintStream out, LongSupplier clock,
+            List<String> history, List<String> commands, boolean rawMode, int columnas,
+            SenalDeTeclado senal) {
         if (in == null || out == null || clock == null) {
             throw new IllegalArgumentException("la entrada con editor necesita flujo, salida y reloj");
         }
@@ -117,6 +143,7 @@ public final class TtyKeys implements Keys {
         this.clock = clock;
         this.rawMode = rawMode;
         this.columnas = columnas;
+        this.senal = senal;
         this.editor = new LineEditor(history, completer(commands));
         this.commandNames = commands == null ? List.of()
                 : commands.stream().filter(n -> n != null && !n.isBlank()).sorted().toList();
@@ -145,7 +172,18 @@ public final class TtyKeys implements Keys {
      */
     public static TtyKeys conTerminalCrudo(InputStream in, PrintStream out, LongSupplier clock,
             List<String> history, List<String> commands) {
-        TtyKeys keys = new TtyKeys(in, out, clock, history, commands, true);
+        return conTerminalCrudo(in, out, clock, history, commands, null);
+    }
+
+    /**
+     * Igual, con el enganche para Ctrl-Z.
+     *
+     * @param senal a quien avisar cuando se pulse Ctrl-Z, o {@code null} si no hay
+     *     sistema al que pedirle nada
+     */
+    public static TtyKeys conTerminalCrudo(InputStream in, PrintStream out, LongSupplier clock,
+            List<String> history, List<String> commands, SenalDeTeclado senal) {
+        TtyKeys keys = new TtyKeys(in, out, clock, history, commands, true, senal);
         return keys.enterRawMode() ? keys : null;
     }
 
@@ -228,6 +266,13 @@ public final class TtyKeys implements Keys {
                 if (key == null) {
                     break;
                 }
+                if (key.kind() == Key.Kind.PARAR) {
+                    // Ctrl-Z no es una tecla del editor: no escribe, no borra y
+                    // no termina la linea. Se atiende aparte y se sigue leyendo,
+                    // porque lo escrito sigue donde estaba.
+                    pararPrimerPlano();
+                    continue;
+                }
                 String before = editor.text();
                 LineEditor.Result result = editor.feed(key);
                 switch (result.action()) {
@@ -277,6 +322,8 @@ public final class TtyKeys implements Keys {
                 return Key.of(Key.Kind.BACKSPACE);
             case 0x03:
                 return Key.of(Key.Kind.CANCEL);
+            case 0x1a:
+                return Key.of(Key.Kind.PARAR);
             case 0x04:
                 return Key.of(Key.Kind.EOF);
             case 0x09:
@@ -562,6 +609,38 @@ public final class TtyKeys implements Keys {
         synchronized (lock) {
             promptShown = false;
         }
+    }
+
+    /**
+     * Ctrl-Z: pide al sistema que detenga lo que hay en el primer plano.
+     *
+     * No se pinta nada aqui. El aviso de Ctrl-Z lo escribe el que lo lee
+     * ({@code ^Z}, como el {@code ^C} de la cancelacion) y lo que pasa despues
+     * no es cosa del teclado: el nucleo detiene el proceso y devuelve el turno a
+     * la terminal, que repinta su aviso cuando le toca. Si se pintara desde este
+     * hilo, saldrian dos avisos y en mal orden.
+     *
+     * Sin nada en el primer plano no se hace nada, ni se pinta: pulsar Ctrl-Z
+     * mientras se escribe una orden no debe estropear lo escrito.
+     */
+    private void pararPrimerPlano() {
+        if (senal == null || !senal.hayPrimerPlano()) {
+            return;
+        }
+        synchronized (screen) {
+            irAlFinal();
+            out.print("^Z\r\n");
+            filaCursor = 0;
+            filaFin = 0;
+            columnaFin = 0;
+            out.flush();
+        }
+        synchronized (lock) {
+            // Se acaba de cerrar la linea del aviso anterior: el siguiente aviso
+            // es nuevo y hay que pintarlo, aunque el texto sea el mismo.
+            promptShown = false;
+        }
+        senal.parar();
     }
 
     private void finish() {

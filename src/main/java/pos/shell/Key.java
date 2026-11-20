@@ -35,6 +35,8 @@ public record Key(Kind kind, int codepoint) {
         KILL_END,
         /** Ctrl-U: se borra la linea entera. */
         KILL_LINE,
+        /** Ctrl-Z: se detiene el trabajo en primer plano. */
+        PARAR,
         /** Una tecla que aqui no significa nada y se descarta. */
         IGNORED
     }

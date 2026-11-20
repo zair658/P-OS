@@ -361,9 +361,11 @@ La suite completa son 280 pruebas y ningún fallo.
   deja las líneas en una cola para no bloquear el turno de la terminal. Es lo que
   hay detrás de `--interactivo` cuando no hay terminal donde poner el modo crudo.
   Con terminal de verdad entra `TtyKeys`, que lee bytes y edita la línea: flechas,
-  historial, tabulador y Ctrl-C (apartado 12.6 de la arquitectura). Lo que sigue
-  sin haber es Ctrl-Z como señal: la tecla llega, pero detener el trabajo en
-  primer plano es una pieza aparte.
+  historial, tabulador y Ctrl-C (apartado 12.6 de la arquitectura). *(Resuelto
+  también.)* Ctrl-Z llegó después, por la misma puerta: el lector de teclado deja
+  el aviso en un buzón y el núcleo lo recoge al principio de su vuelta, con el
+  turno devuelto. Sigue sin haber manejador de señal; la diferencia es que ahora
+  no hace falta.
 
 ---
 

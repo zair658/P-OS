@@ -74,9 +74,11 @@ entre orden y orden.
 Esa sesión edita la línea mientras la escribes, como cualquier terminal: flechas
 arriba y abajo para el historial, izquierda y derecha para moverse dentro de lo
 escrito, `Tab` para completar el nombre de la orden, `Ctrl-C` para tirar la línea
-y `Ctrl-D` para cerrar. El modo crudo del terminal se pide al empezar y se
-devuelve al salir; si el sistema no lo tiene (Windows), la sesión sigue
-funcionando pero leyendo líneas enteras.
+y `Ctrl-D` para cerrar. `Ctrl-Z` hace lo que en cualquier terminal: si hay un
+trabajo en el primer plano lo detiene y devuelve el aviso, para poder mirarlo con
+`jobs`, matarlo con `kill` o retomarlo con `fg`. El modo crudo del terminal se
+pide al empezar y se devuelve al salir; si el sistema no lo tiene (Windows), la
+sesión sigue funcionando pero leyendo líneas enteras.
 
 ```
 java -jar target/p-os-0.8.0-SNAPSHOT.jar --interactivo
@@ -94,10 +96,15 @@ trabajos, que es lo que gana con un teclado delante
 ```
 spawn suma /tarea.pos &
 jobs
-ps
-fg
+fg %1
+Ctrl-Z
+jobs
+fg %1
 kill %1
 ```
+
+La cuarta línea es la tecla, no una orden: se pulsa y ya está. Después de ella la
+sesión vuelve al aviso y el trabajo aparece como `detenido`.
 
 Las órdenes que entiende el intérprete son estas, las mismas en los dos modos.
 

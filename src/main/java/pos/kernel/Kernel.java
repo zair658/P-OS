@@ -7,6 +7,8 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import pos.base.PosFault;
 import pos.fs.FileSystem;
 import pos.mm.AddressSpace;
@@ -69,6 +71,24 @@ public final class Kernel implements ExecutionHost {
     private final List<Tcb> blocked = new ArrayList<>();
     /** Quien espera a que un proceso termine, por pid del proceso esperado. */
     private final Map<Integer, List<Tcb>> processWaiters = new LinkedHashMap<>();
+    /**
+     * Avisos del teclado pendientes de mirar.
+     *
+     * La cola es lo unico que se toca desde fuera del hilo del nucleo: el que
+     * lee el teclado deja el aviso y se va. Todo lo demas lo hace el nucleo en
+     * su propia vuelta, con el estado del sistema quieto, que es la unica forma
+     * de que suspender un proceso no pille a medias al planificador.
+     */
+    private final Queue<ConsoleSignal> signals = new ConcurrentLinkedQueue<>();
+    /**
+     * Cuantos procesos tienen a alguien esperando en el primer plano.
+     *
+     * Se lleva aqui, y no se calcula mirando el mapa, porque quien lee el teclado
+     * lo consulta desde otro hilo y el mapa es del nucleo. Es un numero que solo
+     * escribe el nucleo y solo lee el teclado: para eso basta con que sea
+     * volatil.
+     */
+    private volatile int foreground = 0;
 
     private final LockManager locks = new LockManager();
     private final SemaphoreManager semaphores = new SemaphoreManager();
@@ -380,6 +400,7 @@ public final class Kernel implements ExecutionHost {
         waiter.setBlockedKind(BlockKind.PROCESO);
         waiter.setWakeTick(-1);
         processWaiters.computeIfAbsent(pid, key -> new ArrayList<>()).add(waiter);
+        foreground++;
         trace.add(clock, EventKind.BLOCK, waiter.id(),
                 "espera a que termine p" + pid + " para volver al primer plano");
         return true;
@@ -397,6 +418,7 @@ public final class Kernel implements ExecutionHost {
         if (waiters == null) {
             return;
         }
+        foreground = Math.max(0, foreground - waiters.size());
         for (Tcb waiter : waiters) {
             blocked.remove(waiter);
             waiter.clearBlock();
@@ -405,6 +427,79 @@ public final class Kernel implements ExecutionHost {
             trace.add(clock, EventKind.WAKE, waiter.id(),
                     "p" + pid + " termino: vuelve al primer plano y a la cola de listos");
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Avisos del teclado
+    // ------------------------------------------------------------------
+
+    /**
+     * Deja un aviso del teclado para que el nucleo lo mire en su proxima vuelta.
+     *
+     * Lo llama el hilo que lee las teclas, que es el unico que escribe en el
+     * sistema desde fuera. No toca nada mas: encola y se va.
+     */
+    public void postSignal(ConsoleSignal signal) {
+        if (signal == null) {
+            throw new IllegalArgumentException("un aviso del teclado no puede ser nulo");
+        }
+        signals.add(signal);
+    }
+
+    /**
+     * Si hay algun trabajo al que Ctrl-Z pueda parar.
+     *
+     * Lo consulta el teclado antes de gastar la pulsacion. Un Ctrl-Z en el aviso,
+     * sin nada corriendo, no debe borrar la linea que se esta escribiendo.
+     */
+    public boolean hasForeground() {
+        return foreground > 0;
+    }
+
+    /** Mira los avisos que haya dejado el teclado. */
+    private void drainSignals() {
+        ConsoleSignal signal;
+        while ((signal = signals.poll()) != null) {
+            switch (signal) {
+                case PARAR -> stopForeground();
+            }
+        }
+    }
+
+    /**
+     * Detiene lo que hay en el primer plano y devuelve el teclado a quien espera.
+     *
+     * Quien esta en primer plano no hay que preguntarlo: es, por definicion, el
+     * proceso que alguien esta esperando. Por eso la cascara no participa en
+     * esto; si tuviera que decir el pid, Ctrl-Z solo funcionaria en las ordenes
+     * que se acordaran de colaborar.
+     *
+     * Si el proceso no se puede detener porque esta bloqueado en el nucleo, el
+     * teclado vuelve igual: recuperar el aviso es justo lo que se le pide a
+     * Ctrl-Z cuando un programa se queda colgado.
+     */
+    private void stopForeground() {
+        List<Integer> pids = new ArrayList<>(processWaiters.keySet());
+        if (pids.isEmpty()) {
+            trace.add(clock, EventKind.STOP, "teclado",
+                    "Ctrl-Z sin trabajo en primer plano: no hay a quien parar");
+            return;
+        }
+        for (int pid : pids) {
+            try {
+                int stopped = suspend(pid);
+                trace.add(clock, EventKind.STOP, "teclado",
+                        "Ctrl-Z detiene p" + pid + ": " + stopped + " hilo(s) fuera de la cola");
+            } catch (PosFault fault) {
+                // Se anota y se sigue: el teclado tiene que volver en cualquier
+                // caso, que para eso se pulso la tecla.
+                trace.add(clock, EventKind.STOP, "teclado",
+                        "Ctrl-Z sobre p" + pid + ": " + fault.getMessage());
+            }
+            releaseWaiters(pid);
+        }
+        trace.add(clock, EventKind.WAKE, "teclado",
+                "el primer plano queda libre: la terminal vuelve al aviso");
     }
 
     /** Los procesos que alguien esta esperando, para las tablas de la interfaz. */
@@ -454,6 +549,10 @@ public final class Kernel implements ExecutionHost {
 
         try {
             while (true) {
+                // Antes que nada: lo que haya dejado el teclado. Se mira aqui,
+                // con el turno devuelto y el estado quieto, para que detener un
+                // proceso no dependa de donde acabo el cuanto anterior.
+                drainSignals();
                 admitArrivals();
                 wakeSleepers();
                 wakeWaiters();

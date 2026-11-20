@@ -333,6 +333,72 @@ class TtyKeysTest {
                 "el enter se pinta al final de lo escrito: " + pintado);
     }
 
+    // ------------------------------------------------------------------
+    // Ctrl-Z
+    // ------------------------------------------------------------------
+
+    /** Un enganche de mentira: apunta si le pidieron parar y que contestaba. */
+    private static final class SenalFalsa implements SenalDeTeclado {
+        private final boolean hay;
+        private int paradas;
+
+        SenalFalsa(boolean hay) {
+            this.hay = hay;
+        }
+
+        @Override
+        public boolean hayPrimerPlano() {
+            return hay;
+        }
+
+        @Override
+        public void parar() {
+            paradas++;
+        }
+    }
+
+    private TtyKeys tecladoConSenal(String entrada, SenalDeTeclado senal) {
+        byte[] bytes = entrada.getBytes(StandardCharsets.UTF_8);
+        TtyKeys keys = new TtyKeys(new ByteArrayInputStream(bytes), out, () -> 0L,
+                List.of(), List.of(), false, 80, senal);
+        keys.start();
+        return keys;
+    }
+
+    @Test
+    @DisplayName("Ctrl-Z avisa al sistema y no ensucia la linea")
+    void ctrlZAvisa() {
+        SenalFalsa senal = new SenalFalsa(true);
+        // Se escribe una orden, se pulsa Ctrl-Z y se sigue escribiendo: la tecla
+        // no escribe nada, y lo que venga detras sigue su curso.
+        assertEquals(List.of("echo fin"),
+                lineas(tecladoConSenal("echo fin\u001a\r", senal)));
+        assertEquals(1, senal.paradas, "tiene que pedir la parada una vez");
+        assertTrue(salida.toString(StandardCharsets.UTF_8).contains("^Z"),
+                "el eco de Ctrl-Z tiene que verse: " + salida.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    @DisplayName("Ctrl-Z sin primer plano no toca lo que se esta escribiendo")
+    void ctrlZSinPrimerPlano() {
+        SenalFalsa senal = new SenalFalsa(false);
+        // La tecla cae entre "echo" y " fin": si se colara como caracter o
+        // borrara la linea, saldria otra cosa.
+        assertEquals(List.of("echo fin"),
+                lineas(tecladoConSenal("echo\u001a fin\r", senal)));
+        assertEquals(0, senal.paradas, "no hay a quien parar: no se pide nada");
+        assertFalse(salida.toString(StandardCharsets.UTF_8).contains("^Z"),
+                "tampoco se pinta el eco de una tecla que no hace nada");
+    }
+
+    @Test
+    @DisplayName("sin enganche, Ctrl-Z no existe")
+    void ctrlZSinEnganche() {
+        // Un teclado montado sin sistema detras (guiones y pruebas): la tecla se
+        // descarta sin romper la linea.
+        assertEquals(List.of("ab"), lineas(teclado("a\u001ab\r", List.of(), List.of())));
+    }
+
     @Test
     @DisplayName("un ancho que no existe no se acepta")
     void anchoImposible() {

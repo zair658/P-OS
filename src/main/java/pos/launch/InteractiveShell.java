@@ -8,6 +8,7 @@ import java.util.List;
 
 import pos.alloc.BestFit;
 import pos.fs.FileSystem;
+import pos.kernel.ConsoleSignal;
 import pos.kernel.Kernel;
 import pos.kernel.KernelObserver;
 import pos.mm.MemorySetup;
@@ -18,6 +19,7 @@ import pos.shell.Command;
 import pos.shell.Keys;
 import pos.shell.LiveKeys;
 import pos.shell.Output;
+import pos.shell.SenalDeTeclado;
 import pos.shell.Shell;
 import pos.shell.Terminal;
 import pos.shell.TtyKeys;
@@ -107,7 +109,7 @@ public final class InteractiveShell {
         // leen lineas, que es lo que la entrada sabe entregar.
         Keys keys = System.console() == null ? null
                 : TtyKeys.conTerminalCrudo(System.in, out, kernel::clock,
-                        shell.history(), nombres(shell));
+                        shell.history(), nombres(shell), senal(kernel));
         if (keys == null) {
             keys = new LiveKeys(System.in, kernel::clock);
         }
@@ -135,6 +137,27 @@ public final class InteractiveShell {
     /** La salida de las ordenes va tal cual a la pantalla. */
     private static Output salida(PrintStream out) {
         return out::print;
+    }
+
+    /**
+     * El puente entre Ctrl-Z y el nucleo.
+     *
+     * Se construye aqui, y no dentro del teclado, para que la parte que lee
+     * teclas no tenga que saber que existe un nucleo: solo ve dos preguntas que
+     * puede hacer y una orden que puede dar.
+     */
+    private static SenalDeTeclado senal(Kernel kernel) {
+        return new SenalDeTeclado() {
+            @Override
+            public boolean hayPrimerPlano() {
+                return kernel.hasForeground();
+            }
+
+            @Override
+            public void parar() {
+                kernel.postSignal(ConsoleSignal.PARAR);
+            }
+        };
     }
 
     /**

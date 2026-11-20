@@ -178,12 +178,15 @@ hay es hardware debajo.
 verdad, concurrencia de verdad y recolección de basura que no estorba. El precio
 es que no hay control de memoria física directa, y se asume.
 
-**¿Cómo se para un proceso sin señales?** Con una orden explícita, `stop`, que
-es una llamada al sistema. Un terminal de verdad para con Ctrl-Z porque hay
-señales; aquí no hay manejadores de señal, así que la orden hace de señal. `fg`
-espera al proceso en vez de recibir un aviso asíncrono. En `--interactivo` las
-teclas ya llegan sueltas y el Ctrl-Z no se pierde, pero todavía no está conectado
-a la tabla de trabajos: hoy para el proceso en primer plano se usa `stop %n`.
+**¿Cómo se para un proceso sin señales?** Con el teclado. Ctrl-Z en
+`--interactivo` detiene el trabajo en primer plano, igual que en cualquier
+terminal. Lo que no hay es manejador de señal: cuando la terminal espera a un
+proceso está dormida en el núcleo, así que el hilo que lee el teclado no puede
+detener nada por su cuenta. Deja un aviso en un buzón, y el núcleo lo mira al
+principio de su vuelta, con el turno devuelto y el sistema quieto. Un único
+escritor y un único lector: no hace falta interrumpir a nadie a media cuenta.
+Y `stop %n` sigue existiendo para parar un trabajo por su nombre desde la sesión,
+que es útil cuando no está en el primer plano.
 
 **¿Qué se descartó?** Está escrito en `docs/arquitectura.md`, con el motivo. El
 caso que más se pregunta es el gestor de huecos propio: el castigo proporcional

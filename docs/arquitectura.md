@@ -601,13 +601,20 @@ Decisiones que conviene tener escritas, porque son límites y no olvidos:
 2. **Nadie se detiene a sí mismo.** El hilo que ejecuta la orden está dentro de
    su turno: si se marcara detenido, al devolver el turno el núcleo lo volvería a
    encolar y la orden se contradiría. Un proceso puede detener a otro.
-3. **Ctrl-Z llega, pero todavía no detiene nada.** Con el editor de línea
-   (apartado 12.6) las teclas se leen sueltas, así que un Ctrl-Z ya no se pierde
-   como texto. Lo que falta es la última pieza: que esa tecla detenga el trabajo
-   en primer plano. Es una orden de la sesión y no del teclado, y mientras no
-   esté, `stop %n` hace lo que en un terminal de verdad hace esa tecla. `fg`
-   espera en lugar de recibir un aviso asíncrono, que es justo lo que permite no
-   necesitar manejadores de señal.
+3. **Ctrl-Z detiene el primer plano, y lo hace el núcleo.** La tecla no la puede
+   atender quien la lee: cuando la terminal espera a un proceso está dormida en el
+   núcleo, y nadie mira el teclado mientras el programa corre. Además `suspend`
+   necesita el sistema quieto, con el turno devuelto, y el hilo que lee no lo
+   tiene. Así que el teclado deja un aviso (`postSignal`) y sigue leyendo; el
+   núcleo lo mira al principio de cada vuelta, antes de repartir turno, y ahí sí
+   detiene. Es un buzón y no un manejador de señal porque el único escritor es un
+   hilo y el único lector es el núcleo: no hay nada que interrumpir a media
+   cuenta.
+   Quién está en primer plano no hay que preguntárselo a la sesión: es, por
+   definición, el proceso que alguien está esperando. Por eso `Ctrl-Z` funciona
+   con cualquier orden que espere a un proceso, y no solo con las que se acuerden
+   de colaborar. Sin nada en el primer plano no se hace nada ni se pinta el eco:
+   pulsar `Ctrl-Z` mientras se escribe una orden no debe estropear lo escrito.
 4. **Un detenido no es un averiado.** Al cerrar el sistema, un hilo que seguía
    detenido se anota como «seguía detenido al cerrar el sistema», no como
    interbloqueo: no espera nada. La traza lo dice con la palabra «en pausa»
@@ -648,6 +655,7 @@ Teclas:
 | `Ctrl-K` / `Ctrl-U` | borran hasta el final y la línea entera |
 | `Tab` | completa el nombre de la orden |
 | `Ctrl-C` | tira lo escrito y deja la línea vacía; no cierra la sesión |
+| `Ctrl-Z` | detiene el trabajo en primer plano y devuelve el aviso (apartado 12.5) |
 | `Ctrl-D` | con la línea vacía cierra la sesión; con texto, borra bajo el cursor |
 
 El tabulador completa contra los nombres de orden, que se copian al construir:
