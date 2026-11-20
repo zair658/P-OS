@@ -88,6 +88,27 @@ contar cuántas tiene cada proceso. Se pinta como una rejilla de 64 columnas; lo
 huecos libres van más oscuros que el panel, porque memoria libre es ausencia de
 algo y lo ocupado tiene que resaltar.
 
+### El ancho de las columnas
+
+Una tabla de Swing reparte el ancho que sobra entre sus columnas, y lo hace
+multiplicando: una columna que necesita 45 px para su número acababa con 136, y
+el valor de la fila aparecía a un palmo de su cabecera. Se arregló de raíz.
+
+Cada columna lleva un tope (`maxWidth`) igual al ancho que necesita de verdad, y
+una última columna vacía se come el sobrante. Los modos de reparto automático de
+`JTable` no sirven para esto: `doLayout` los aplica con
+`setWidthsFromPreferredWidths(false)`, así que solo respetan el ancho mínimo y
+el máximo; con el máximo libre, la columna crece hasta llenar la tabla. Poniendo
+el tope, el texto queda debajo de su cabecera y la tabla sigue ocupando el ancho
+de la ventana.
+
+Los topes se miden, no se adivinan: `audit/Audit.java` monta el `Shell` sin
+pantalla, mide con la fuente real el contenido más ancho de cada columna y avisa
+cuando no cabe. Esa medición destapó lo que el reparto estirado tapaba --
+columnas más estrechas que su propio encabezado --. Si aun así un valor no cabe,
+la celda lo recorta con puntos suspensivos en vez de cortar la palabra a mitad
+de letra.
+
 ---
 
 ## 4. Capturas sin pantalla

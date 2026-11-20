@@ -4,6 +4,7 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import javax.swing.plaf.basic.BasicTableUI;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
+import javax.swing.table.TableColumn;
 
 import pos.ui.Snapshot;
 import pos.ui.Table;
@@ -115,8 +117,24 @@ public final class TablePanel extends JPanel {
 
         styleHeader(table.getTableHeader());
         for (int i = 0; i < widths.length && i < table.getColumnCount(); i++) {
-            table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
+            TableColumn column = table.getColumnModel().getColumn(i);
+            column.setPreferredWidth(widths[i]);
+            // El techo es el ancho pedido: sin el, JTable reparte el sobrante de la
+            // ventana entre todas las columnas al hacer el layout, y una columna de
+            // tres cifras acaba midiendo cuatrocientos pixeles.
+            column.setMaxWidth(widths[i]);
         }
+        // Columna de relleno: se lleva el ancho que sobra. Sin ella Swing reparte
+        // ese sobrante entre las columnas de datos, y una columna de tres cifras
+        // acaba midiendo cuatrocientos pixeles: el valor queda a un palmo de su
+        // cabecera y la fila se lee de un lado a otro de la ventana.
+        TableColumn filler = table.getColumnModel().getColumn(model.getColumnCount() - 1);
+        filler.setHeaderValue("");
+        filler.setMinWidth(0);
+        filler.setPreferredWidth(0);
+        filler.setMaxWidth(Integer.MAX_VALUE);
+        filler.setResizable(false);
+        table.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
 
         JScrollPane scroll = new JScrollPane(table);
         scroll.setBorder(BorderFactory.createEmptyBorder());
@@ -158,10 +176,12 @@ public final class TablePanel extends JPanel {
         update(List.of(), "");
     }
 
-    /** Ancho preferido de una columna. */
+    /** Ancho de una columna: el que se pide y el maximo que se le deja. */
     public void columnWidth(int column, int width) {
         if (column >= 0 && column < table.getColumnCount()) {
-            table.getColumnModel().getColumn(column).setPreferredWidth(width);
+            TableColumn col = table.getColumnModel().getColumn(column);
+            col.setPreferredWidth(width);
+            col.setMaxWidth(width);
         }
     }
 
@@ -233,9 +253,41 @@ public final class TablePanel extends JPanel {
                     label.setForeground(Theme.DIM);
                 }
             }
-            label.setText(text);
+            // El punto de color come ancho de la celda: si no se descuenta, el estado
+            // mas largo sale recortado aunque el texto por si solo quepa.
+            int icon = label.getIcon() == null ? 0 : label.getIcon().getIconWidth();
+            int room = t.getColumnModel().getColumn(col).getWidth() - icon;
+            label.setText(fits(label, text, room) ? text : shorten(label, text, room));
             return label;
         }
+    }
+
+    /** Margen que el renderer deja a cada lado de un texto. */
+    private static final int CELL_PADDING = 20;
+
+    /** Un texto cabe si su ancho, mas el margen de la celda, no pasa del ancho. */
+    private static boolean fits(JLabel label, String text, int width) {
+        return label.getFontMetrics(label.getFont()).stringWidth(text) + CELL_PADDING <= width;
+    }
+
+    /**
+     * Recorta un texto que no cabe y le pone puntos suspensivos.
+     *
+     * Una columna estrecha corta la palabra a mitad de letra y eso se lee como un
+     * fallo de pintado; con los tres puntos se ve que hay mas y no se pierde el
+     * comienzo, que es lo que identifica la fila.
+     */
+    private static String shorten(JLabel label, String text, int width) {
+        FontMetrics metrics = label.getFontMetrics(label.getFont());
+        int room = width - CELL_PADDING - metrics.stringWidth("...");
+        if (room <= 0) {
+            return "";
+        }
+        int end = text.length();
+        while (end > 0 && metrics.stringWidth(text.substring(0, end)) > room) {
+            end--;
+        }
+        return end <= 0 ? "" : text.substring(0, end) + "...";
     }
 
     /** Un circulo de siete pixeles del color de un estado. */
@@ -277,6 +329,11 @@ public final class TablePanel extends JPanel {
             this.headers = headers.clone();
         }
 
+        /** La ultima columna es el relleno: no tiene cabecera ni dato. */
+        private boolean isFiller(int column) {
+            return column >= headers.length;
+        }
+
         void setRows(List<String[]> newRows) {
             rows = newRows == null ? List.of() : new ArrayList<>(newRows);
             fireTableDataChanged();
@@ -289,18 +346,23 @@ public final class TablePanel extends JPanel {
 
         @Override
         public int getColumnCount() {
-            return headers.length;
+            return headers.length + 1;
         }
 
         @Override
         public String getColumnName(int column) {
-            return headers[column];
+            return isFiller(column) ? "" : headers[column];
         }
 
         @Override
         public Object getValueAt(int row, int column) {
             String[] values = rows.get(row);
             return column < values.length ? values[column] : "";
+        }
+
+        @Override
+        public Class<?> getColumnClass(int column) {
+            return String.class;
         }
 
         @Override

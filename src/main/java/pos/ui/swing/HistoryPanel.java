@@ -32,6 +32,9 @@ public final class HistoryPanel extends JPanel {
     /** Margen del grafico. */
     private static final int PAD = 12;
 
+    /** Ancho reservado a la leyenda de la derecha ("listos 12", "100% cpu"). */
+    private static final int LEGEND = 72;
+
     /** Alto comodo del area de dibujo, y minimo cuando el panel es bajo. */
     private static final int PLOT = 76;
 
@@ -89,7 +92,7 @@ public final class HistoryPanel extends JPanel {
 
         int top = SectionHeader.HEIGHT + 16;
         int left = PAD + 26;
-        int width = Math.max(10, getWidth() - left - PAD - 46);
+        int width = Math.max(10, getWidth() - left - PAD - LEGEND);
         // El grafico ocupa el alto que le den: una tira de setenta y seis pixeles
         // en un panel de cuatrocientos es un grafico escondido en una esquina.
         int plot = Math.max(PLOT, getHeight() - top - 30);

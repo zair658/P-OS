@@ -101,22 +101,22 @@ public final class Shell {
      */
     public Shell() {
 
-        processes = new TablePanel(processModel, new int[] { 46, 116, 96, 52, 52, 60, 60, 78 },
+        processes = new TablePanel(processModel, new int[] { 46, 116, 110, 62, 62, 70, 70, 112 },
                 new int[] { 0, 3, 4, 5, 6 }, 2);
         threadsProc = new TablePanel(schedulingModel,
-                new int[] { 116, 116, 96, 46, 52, 62, 66, 150 },
+                new int[] { 116, 116, 110, 48, 54, 70, 78, 150 },
                 new int[] { 3, 4, 5, 6 }, 2);
         threadsSched = new TablePanel(schedulingModel,
-                new int[] { 116, 116, 96, 46, 52, 62, 66, 150 },
+                new int[] { 116, 116, 110, 48, 54, 70, 78, 150 },
                 new int[] { 3, 4, 5, 6 }, 2);
-        memory = new TablePanel(memoryModel, new int[] { 70, 70, 74, 130 },
+        memory = new TablePanel(memoryModel, new int[] { 72, 72, 82, 132 },
                 new int[] { 0, 1, 2 }, -1);
-        calls = new TablePanel(callsModel, new int[] { 66, 190, 66 },
+        calls = new TablePanel(callsModel, new int[] { 70, 200, 70 },
                 new int[] { 0, 2 }, -1);
-        sync = new TablePanel(syncModel, new int[] { 84, 116, 210, 60 },
+        sync = new TablePanel(syncModel, new int[] { 92, 120, 282, 78 },
                 new int[] { 3 }, -1);
         queue = new TablePanel("Cola de listos", schedulingModel.queueHeaders(),
-                new int[] { 60, 132, 132 }, new int[] { 0 }, -1);
+                new int[] { 64, 136, 140 }, new int[] { 0 }, -1);
 
         pages.setBackground(Theme.BG);
         pages.add(pageSummary(), TABS[0]);
@@ -321,6 +321,11 @@ public final class Shell {
         fit(threadsSched, shot.threads().size());
         fit(memory, memoryModel.rows(shot).size());
         fit(calls, shot.calls().rows().size());
+        // La cola y la tabla de sincronizacion se quedan con las filas que lleven
+        // ahora, no con el alto de relleno del modelo: si no, la pestana no cabe y
+        // saca una barra pegada al borde de la ventana.
+        fit(queue, schedulingModel.queueRows(shot).size());
+        fit(sync, syncModel.rows(shot).size());
 
         String traceText = String.join("\n", shot.trace());
         String traceSummary = shot.trace().size() + " lineas"
