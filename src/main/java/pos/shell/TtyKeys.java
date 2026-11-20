@@ -44,6 +44,9 @@ public final class TtyKeys implements Keys {
     /** Bytes que se leen como maximo dentro de una secuencia de escape. */
     private static final int MAX_ESCAPE = 8;
 
+    /** Ancho que se supone cuando no se puede preguntar al terminal. */
+    private static final int ANCHO_POR_DEFECTO = 80;
+
     private final InputStream in;
     private final PrintStream out;
     private final LongSupplier clock;
@@ -56,12 +59,26 @@ public final class TtyKeys implements Keys {
     private final Object lock = new Object();
     private final Object screen = new Object();
     private final Thread reader;
+    /** Ancho del terminal en columnas: sin el, una linea larga se descuadra. */
+    private final int columnas;
 
     private volatile boolean closed;
     private String prompt = "";
     private boolean promptShown;
     /** Estado del terminal antes del modo crudo, para devolverlo tal cual. */
     private String savedStty;
+    /**
+     * Fila del cursor dentro del bloque de la linea, contando desde la primera.
+     *
+     * Se lleva porque al repintar hay que volver arriba y borrar: sin saber
+     * cuantas filas ocupa lo escrito, una linea que pasa del ancho del terminal
+     * se queda con restos de la version anterior debajo.
+     */
+    private int filaCursor;
+    /** Fila en la que acabo el texto, para cerrar la linea al pulsar enter. */
+    private int filaFin;
+    /** Columna justo despues del ultimo caracter escrito. */
+    private int columnaFin;
 
     /**
      * @param in de donde se leen las teclas, normalmente la entrada estandar
@@ -74,13 +91,32 @@ public final class TtyKeys implements Keys {
      */
     public TtyKeys(InputStream in, PrintStream out, LongSupplier clock,
             List<String> history, List<String> commands, boolean rawMode) {
+        this(in, out, clock, history, commands, rawMode,
+                rawMode ? anchoDelTerminal() : ANCHO_POR_DEFECTO);
+    }
+
+    /**
+     * Igual, pero con el ancho del terminal ya decidido por quien llama.
+     *
+     * Existe para las pruebas: el ancho no se puede preguntar si no hay terminal,
+     * y sin ancho fijo no hay forma de comprobar que una linea larga se parte
+     * donde toca.
+     *
+     * @param columnas ancho del terminal en columnas, mayor que cero
+     */
+    TtyKeys(InputStream in, PrintStream out, LongSupplier clock,
+            List<String> history, List<String> commands, boolean rawMode, int columnas) {
         if (in == null || out == null || clock == null) {
             throw new IllegalArgumentException("la entrada con editor necesita flujo, salida y reloj");
+        }
+        if (columnas <= 0) {
+            throw new IllegalArgumentException("el ancho del terminal tiene que ser positivo");
         }
         this.in = in;
         this.out = out;
         this.clock = clock;
         this.rawMode = rawMode;
+        this.columnas = columnas;
         this.editor = new LineEditor(history, completer(commands));
         this.commandNames = commands == null ? List.of()
                 : commands.stream().filter(n -> n != null && !n.isBlank()).sorted().toList();
@@ -364,7 +400,13 @@ public final class TtyKeys implements Keys {
             return;
         }
         synchronized (screen) {
+            irAlFinal();
             out.print("\r\n" + String.join("  ", hits) + "\r\n");
+            // La linea que se estaba escribiendo se cierra aqui; el aviso vuelve
+            // a pintarse debajo, en una fila limpia.
+            filaCursor = 0;
+            filaFin = 0;
+            columnaFin = 0;
             out.flush();
         }
     }
@@ -378,19 +420,127 @@ public final class TtyKeys implements Keys {
         }
         String text = editor.text();
         int cursor = editor.cursor();
+        Colocacion donde = colocar(shown.length(), text.length(), cursor, columnas);
         synchronized (screen) {
-            out.print("\r" + shown + text + "\u001b[K");
-            int back = text.length() - cursor;
-            if (back > 0) {
-                out.print("\u001b[" + back + "D");
+            // Volver al principio de la linea y borrar de ahi abajo: la linea
+            // nueva puede ser mas corta que la anterior, y si no se borra, lo que
+            // sobra se queda escrito en la pantalla.
+            out.print("\r");
+            if (filaCursor > 0) {
+                out.print(arriba(filaCursor));
+            }
+            out.print("\u001b[J");
+            out.print(shown + text);
+            // Cuando el ultimo caracter cae justo en el borde, el terminal no sabe
+            // si bajar de linea hasta que llegue otro caracter. Se baja aqui, con
+            // un salto explicito, para que las cuentas de filas sean ciertas.
+            if (donde.salto()) {
+                out.print("\r\n");
+            }
+            if (donde.subir() > 0) {
+                out.print(arriba(donde.subir()));
+            }
+            out.print("\r");
+            if (donde.columna() > 0) {
+                out.print(derecha(donde.columna()));
             }
             out.flush();
+            filaCursor = donde.fila();
+            filaFin = donde.filaFin();
+            columnaFin = donde.columnaFin();
+        }
+    }
+
+    /**
+     * Donde queda el cursor despues de pintar la linea.
+     *
+     * Es la cuenta que hace que una linea larga no descuadre. Se separa del
+     * pintado y se prueba sola, porque un error de una fila se ve en la pantalla
+     * pero no se explica: aqui son cuatro divisiones y se pueden comprobar.
+     *
+     * @param aviso ancho del aviso en caracteres
+     * @param texto lo escrito, sin el aviso
+     * @param cursor posicion del cursor dentro del texto
+     * @param ancho columnas del terminal
+     * @return los movimientos que hay que hacer para dejar el cursor en su sitio
+     */
+    static Colocacion colocar(int aviso, int texto, int cursor, int ancho) {
+        if (ancho <= 0 || aviso < 0 || texto < 0 || cursor < 0 || cursor > texto) {
+            throw new IllegalArgumentException("medidas imposibles para pintar la linea");
+        }
+        int total = aviso + texto;
+        // El caso del borde: el texto llena la ultima columna exacta y el terminal
+        // deja el cursor en el aire, sin bajar. Hay que bajarlo a mano.
+        boolean salto = total > 0 && total % ancho == 0;
+        // Fila del ultimo caracter escrito, que es donde acaba el cursor al pintar.
+        int filaFinal = salto ? total / ancho : (total == 0 ? 0 : (total - 1) / ancho);
+        // Filas que ocupa el texto. Vacio ocupa una: el aviso esta ahi.
+        int filas = total == 0 ? 1 : (total % ancho == 0 ? total / ancho : total / ancho + 1);
+        int posicion = aviso + cursor;
+        int fila = posicion / ancho;
+        int columna = posicion % ancho;
+        // Donde acaba el texto, que no es donde esta el cursor: para cerrar la
+        // linea (enter, Ctrl-C) hay que ir al final, no a donde se este editando.
+        int columnaFinal = total % ancho;
+        return new Colocacion(salto, filaFinal - fila, columna, fila, filas,
+                filaFinal, columnaFinal);
+    }
+
+    /**
+     * Lo que hay que hacer con el cursor, ya calculado.
+     *
+     * @param salto si hay que bajar de linea a mano antes de colocar el cursor
+     * @param subir filas que subir desde el final del texto hasta el cursor
+     * @param columna columna en la que dejarlo, contando desde el margen
+     * @param fila fila del cursor dentro del bloque, contando desde la primera
+     * @param filas filas que ocupa el texto entero
+     * @param filaFin fila en la que acaba el texto
+     * @param columnaFin columna justo despues del ultimo caracter escrito
+     */
+    record Colocacion(boolean salto, int subir, int columna, int fila, int filas,
+            int filaFin, int columnaFin) {
+    }
+
+    private static String arriba(int filas) {
+        return "\u001b[" + filas + "A";
+    }
+
+    private static String abajo(int filas) {
+        return "\u001b[" + filas + "B";
+    }
+
+    private static String derecha(int columnas) {
+        return "\u001b[" + columnas + "C";
+    }
+
+    /**
+     * Lleva el cursor al final de la linea escrita, para cerrarla.
+     *
+     * Sin esto, pulsar enter con una linea larga dejaria el cursor a media linea
+     * y la orden siguiente se escribiria encima.
+     */
+    private void irAlFinal() {
+        int bajar = filaFin - filaCursor;
+        if (bajar > 0) {
+            out.print(abajo(bajar));
+        } else if (bajar < 0) {
+            out.print(arriba(-bajar));
+        }
+        out.print("\r");
+        if (columnaFin > 0) {
+            out.print(derecha(columnaFin));
         }
     }
 
     private void submit(String line) {
         synchronized (screen) {
+            irAlFinal();
             out.print("\r\n");
+            // La linea queda cerrada: lo que se pinte a partir de aqui empieza
+            // en una fila nueva, sin nada encima que borrar.
+            filaCursor = 0;
+            filaFin = 0;
+            columnaFin = 0;
             out.flush();
         }
         synchronized (lock) {
@@ -402,7 +552,11 @@ public final class TtyKeys implements Keys {
 
     private void cancel() {
         synchronized (screen) {
+            irAlFinal();
             out.print("^C\r\n");
+            filaCursor = 0;
+            filaFin = 0;
+            columnaFin = 0;
             out.flush();
         }
         synchronized (lock) {
@@ -461,8 +615,37 @@ public final class TtyKeys implements Keys {
         }
     }
 
+    /**
+     * Ancho del terminal en columnas, preguntado a stty.
+     *
+     * Se pregunta una sola vez, al empezar: cambiar el tamano de la ventana a
+     * mitad de sesion moveria los bordes por debajo de estas cuentas, y eso no se
+     * arregla aqui sino recalculando cada vez, que es otra tarea. Sin respuesta
+     * utilizable queda el ancho de siempre.
+     *
+     * @return las columnas del terminal, o 80 si no se puede saber
+     */
+    static int anchoDelTerminal() {
+        String size = stty("stty", "size");
+        if (size == null || size.isBlank()) {
+            return ANCHO_POR_DEFECTO;
+        }
+        // stty size responde "filas columnas".
+        String[] partes = size.trim().split("\\s+");
+        if (partes.length < 2) {
+            return ANCHO_POR_DEFECTO;
+        }
+        try {
+            int ancho = Integer.parseInt(partes[partes.length - 1].trim());
+            // Menos de veinte columnas no es un terminal, es una respuesta rota.
+            return ancho >= 20 ? ancho : ANCHO_POR_DEFECTO;
+        } catch (NumberFormatException e) {
+            return ANCHO_POR_DEFECTO;
+        }
+    }
+
     /** Ejecuta stty sobre el terminal de este proceso y devuelve su salida. */
-    private String stty(String... command) {
+    private static String stty(String... command) {
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);

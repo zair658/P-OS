@@ -2,6 +2,7 @@ package pos.shell;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -33,6 +34,16 @@ class TtyKeysTest {
         byte[] bytes = entrada.getBytes(StandardCharsets.UTF_8);
         TtyKeys keys = new TtyKeys(new ByteArrayInputStream(bytes), out, () -> 0L,
                 historial, ordenes, false);
+        keys.start();
+        return keys;
+    }
+
+    /** Igual, con el ancho del terminal fijado: sin terminal no hay a quien preguntar. */
+    private TtyKeys teclado(String entrada, List<String> historial, List<String> ordenes,
+            int ancho) {
+        byte[] bytes = entrada.getBytes(StandardCharsets.UTF_8);
+        TtyKeys keys = new TtyKeys(new ByteArrayInputStream(bytes), out, () -> 0L,
+                historial, ordenes, false, ancho);
         keys.start();
         return keys;
     }
@@ -251,5 +262,82 @@ class TtyKeysTest {
         historial.add("primera");
         TtyKeys keys = teclado("\u001b[A\r", historial, List.of());
         assertEquals(List.of("primera"), lineas(keys));
+    }
+
+    // ------------------------------------------------------------------
+    // Lineas mas largas que el terminal
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("una linea corta cabe en una fila y el cursor queda tras lo escrito")
+    void colocacionCorta() {
+        // Aviso de 7 y cinco letras: 12 caracteres en 80 columnas.
+        assertEquals(new TtyKeys.Colocacion(false, 0, 12, 0, 1, 0, 12),
+                TtyKeys.colocar(7, 5, 5, 80));
+    }
+
+    @Test
+    @DisplayName("una linea que acaba justo en el borde pide un salto explicito")
+    void colocacionEnElBorde() {
+        // 7 + 73 = 80. El terminal no baja solo: se queda esperando el caracter
+        // siguiente, y sin bajarlo a mano las cuentas de filas salen mal.
+        assertEquals(new TtyKeys.Colocacion(true, 0, 0, 1, 1, 1, 0),
+                TtyKeys.colocar(7, 73, 73, 80));
+    }
+
+    @Test
+    @DisplayName("una linea que pasa del borde ocupa dos filas")
+    void colocacionPartida() {
+        // 95 caracteres en 80 columnas: 80 en la primera fila y 15 en la segunda.
+        assertEquals(new TtyKeys.Colocacion(false, 0, 15, 1, 2, 1, 15),
+                TtyKeys.colocar(7, 88, 88, 80));
+    }
+
+    @Test
+    @DisplayName("con el cursor a media linea partida hay que subir una fila")
+    void colocacionCursorEnMedio() {
+        // El texto acaba en la fila 1 y el cursor esta en la 0: una fila arriba.
+        assertEquals(new TtyKeys.Colocacion(false, 1, 12, 0, 2, 1, 15),
+                TtyKeys.colocar(7, 88, 5, 80));
+    }
+
+    @Test
+    @DisplayName("la linea vacia deja el cursor detras del aviso")
+    void colocacionVacia() {
+        assertEquals(new TtyKeys.Colocacion(false, 0, 7, 0, 1, 0, 7),
+                TtyKeys.colocar(7, 0, 0, 80));
+    }
+
+    @Test
+    @DisplayName("al repintar una linea partida se sube antes de borrar")
+    void repintadoSubeDeFila() {
+        // Diez columnas y once letras: la segunda fila ya tiene una letra, asi que
+        // el repintado tiene que subir, borrar y volver a escribir.
+        TtyKeys keys = teclado("abcdefghijkl", List.of(), List.of(), 10);
+        // Se espera a que el lector acabe: lo pintado se mira despues, no antes.
+        assertEquals(List.of(), lineas(keys));
+        String pintado = salida.toString(StandardCharsets.UTF_8);
+        assertTrue(pintado.contains("\u001b[1A\u001b[Jabcdefghijk"),
+                "sube una fila, borra y repinta la linea entera: " + pintado);
+    }
+
+    @Test
+    @DisplayName("pulsar enter con una linea partida la cierra por el final")
+    void enterEnLineaPartida() {
+        // Con el cursor en la fila 1, columna 2, cerrar la linea es irse a esa
+        // columna y bajar: no vale un salto desde donde este el cursor.
+        assertEquals(List.of("abcdefghijkl"),
+                lineas(teclado("abcdefghijkl\r", List.of(), List.of(), 10)));
+        String pintado = salida.toString(StandardCharsets.UTF_8);
+        assertTrue(pintado.contains("\r\u001b[2C\r\n"),
+                "el enter se pinta al final de lo escrito: " + pintado);
+    }
+
+    @Test
+    @DisplayName("un ancho que no existe no se acepta")
+    void anchoImposible() {
+        assertThrows(IllegalArgumentException.class, () -> TtyKeys.colocar(0, 0, 0, 0));
+        assertThrows(IllegalArgumentException.class, () -> TtyKeys.colocar(5, -1, 0, 80));
+        assertThrows(IllegalArgumentException.class, () -> TtyKeys.colocar(5, 3, 9, 80));
     }
 }

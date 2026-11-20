@@ -662,6 +662,33 @@ nada que ejecutar: el aviso sale del directorio actual y eso es estado del
 sistema, no del teclado. Por eso el aviso no aparece antes de la respuesta del
 comando anterior.
 
+**Líneas más largas que la pantalla.** Cuando el texto pasa del ancho del
+terminal, el terminal baja solo de fila, y a partir de ahí repintar ya no es
+«borrar la línea»: hay que subir hasta la primera fila del bloque, borrar todo
+lo de debajo y volver a escribir. El ancho se pide una vez al arrancar con
+`stty size`; las pruebas se lo dan al construir, porque sin terminal no hay a
+quien preguntar.
+
+Cada repintado calcula primero la geometría en una función pura, `colocar`, y
+la aplica después: cuántas filas ocupa el bloque (aviso más texto), en qué fila
+y columna queda el cursor, cuántas filas hay que subir desde el final del texto
+hasta él y en qué columna acaba lo escrito. Lo de la columna final no es
+adorno: al pulsar `Enter` el cursor tiene que quedar detrás del último carácter,
+y si está a media línea eso son dos movimientos —`\r` y tantas columnas a la
+derecha—, no un salto desde donde esté.
+
+El caso que rompía las cuentas es el borde exacto: un texto que acaba justo en
+la última columna no baja de fila hasta que llega el carácter siguiente, así
+que el terminal tiene una fila menos de las que parecen. Por eso `colocar`
+devuelve un `salto` explícito y el editor pinta `\r\n` en ese momento; con eso
+las filas que cuenta y las que hay de verdad coinciden.
+
+Límite conocido: el ancho se lee al arrancar y no se vuelve a mirar, así que
+cambiar el tamaño de la ventana a mitad de sesión descuadra el repintado hasta
+que se sale. Se arregla con `SIGWINCH`, que llegará con las señales; para mirarlo
+a ojo está `tools/pantalla.py`, que lanza la sesión en un terminal falso de
+80 columnas y vuelca las filas tal como quedan.
+
 Dos límites que conviene tener escritos:
 
 1. **Sin `stty` no hay editor, y se nota.** En Windows no existe `stty`. Si se
